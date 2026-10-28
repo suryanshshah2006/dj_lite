@@ -37,23 +37,56 @@ def setup():
     return Recommender(df, style, rcfg, tcfg), df, style, rcfg, tcfg
 
 
-def test_relevance_matches_formula(setup):
-    rec, df, style, rcfg, tcfg = setup
-    w = rcfg["relevance"]
-    i, cand = 5, np.arange(50, 60)
-    r = rec.relevance(i, cand)
+def _expected_parts(df, style, i, cand):
     a = l2_normalize(df[[c + "_z" for c in AUDIO]].to_numpy())
     audio = (a[cand] @ a[i] + 1) / 2
     sty = (style[cand] @ style[i] + 1) / 2
     gap = np.abs(df["year"].to_numpy()[cand] - df["year"].iat[i])
     era = 1 - 0.5 * np.clip((gap - 5) / 25, 0, 1)
+    return audio, sty, era
+
+
+def _with_missing_style(rec, mode):
+    rel = {**rec.rcfg["relevance"], "missing_style": mode}
+    rec2 = object.__new__(Recommender)
+    rec2.__dict__.update(rec.__dict__)
+    rec2.rcfg = {**rec.rcfg, "relevance": rel}
+    return rec2
+
+
+def test_relevance_matches_formula(setup):
+    rec, df, style, rcfg, _ = setup
+    w = rcfg["relevance"]
+    i, cand = 25, np.arange(50, 60)  # all have style vectors
+    audio, sty, era = _expected_parts(df, style, i, cand)
     expected = w["w_audio"] * audio + w["w_style"] * sty + w["w_era"] * era
-    assert np.allclose(r["relevance"], expected, atol=1e-6)
+    assert np.allclose(rec.relevance(i, cand)["relevance"], expected, atol=1e-6)
 
 
-def test_zero_style_is_neutral(setup):
+def test_missing_style_renormalize_seed(setup):
+    rec, df, style, rcfg, _ = setup
+    assert rcfg["relevance"]["missing_style"] == "renormalize"
+    i, cand = 0, np.arange(50, 60)  # seed 0 has no style vector
+    audio, _, era = _expected_parts(df, style, i, cand)
+    r = rec.relevance(i, cand)
+    assert np.allclose(r["relevance"], 0.70 * audio + 0.30 * era, atol=1e-6)
+    assert np.isnan(r["style_sim"]).all()
+
+
+def test_missing_style_renormalize_candidate(setup):
+    rec, df, style, rcfg, _ = setup
+    w = rcfg["relevance"]
+    i, cand = 25, np.array([3, 4, 50, 51])  # 3, 4 have no style vector
+    audio, sty, era = _expected_parts(df, style, i, cand)
+    r = rec.relevance(i, cand)["relevance"]
+    assert np.allclose(r[:2], (0.70 * audio + 0.30 * era)[:2], atol=1e-6)
+    full = w["w_audio"] * audio + w["w_style"] * sty + w["w_era"] * era
+    assert np.allclose(r[2:], full[2:], atol=1e-6)
+
+
+def test_missing_style_neutral(setup):
     rec, *_ = setup
-    r = rec.relevance(0, np.arange(30, 40))  # track 0 has no style vector
+    r = _with_missing_style(rec, "neutral").relevance(0, np.arange(30, 40))
     assert np.allclose(r["style_sim"], 0.5)
 
 
@@ -77,6 +110,29 @@ def test_excludes_seed_and_same_artist(setup, method):
     assert i not in set(out["idx"])
     seed_artist = df["artist_ids"].iat[i][0]
     assert all(df["artist_ids"].iat[j][0] != seed_artist for j in out["idx"])
+
+
+@pytest.mark.parametrize("method", ["transition", "audio", "relevance", "full"])
+def test_max_per_artist(setup, method):
+    rec, df, *_ = setup
+    assert rec.rcfg["ranking"]["max_per_artist"] == 1
+    out = rec.rank(11, method, n=10)
+    artists = [df["artist_ids"].iat[j][0] for j in out["idx"]]
+    assert len(set(artists)) == len(artists) == 10
+
+
+def test_diversity_off_allows_repeats(setup):
+    rec, *_ = setup
+    rec2 = object.__new__(Recommender)
+    rec2.__dict__.update(rec.__dict__)
+    rec2.rcfg = {**rec.rcfg, "ranking": {**rec.rcfg["ranking"], "max_per_artist": None}}
+    on = rec.rank(11, "full", n=10)
+    off = rec2.rank(11, "full", n=40)
+    assert off["idx"].iat[0] == on["idx"].iat[0]  # same top pick either way
+    # 39 eligible artists (seed's excluded), 40 picks: the uncapped list must repeat one.
+    df = rec.tracks
+    artists = [df["artist_ids"].iat[j][0] for j in off["idx"]]
+    assert len(off) == 40 and len(set(artists)) < 40
 
 
 def test_faiss_retrieval_matches_exact_scores(setup):

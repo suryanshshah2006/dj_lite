@@ -6,6 +6,10 @@ relevance:
   w_audio: 0.35
   w_style: 0.50
   w_era: 0.15
+  # When the seed or a candidate has no style vector (artist with no shared albums):
+  #   renormalize: drop the style term, rescale audio/era to sum to 1 (0.70 / 0.30)
+  #   neutral:     use style_sim = 0.5
+  missing_style: renormalize
   audio_columns:     # standardized (_z) columns used for audio cosine similarity
     - danceability
     - energy
@@ -25,6 +29,9 @@ ranking:
   alpha: 0.5             # weight on relevance
   beta: 0.5              # weight on transition_score_v0_1
   transition_version: v0_1
+  # Greedy diversity: a candidate is skipped once any of its artists already has this
+  # many tracks in the top-n list (null/0 = off). Applies to every method.
+  max_per_artist: 1
 
 sanity:
   top_n: 10

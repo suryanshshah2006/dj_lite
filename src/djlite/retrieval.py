@@ -52,6 +52,7 @@ class Recommender:
         self.audio = l2_normalize(
             self.tracks[[c + z_suffix for c in rel["audio_columns"]]].to_numpy(np.float32))
         self.style = np.ascontiguousarray(style, dtype=np.float32)
+        self.has_style = np.linalg.norm(self.style, axis=1) > 0
 
         combined = np.hstack([np.sqrt(rel["w_audio"]) * self.audio,
                               np.sqrt(rel["w_style"]) * self.style]).astype(np.float32)
@@ -87,7 +88,17 @@ class Recommender:
         style = (self.style[cand] @ self.style[i] + 1) / 2
         era = np.asarray(era_score(self.arr["year"][i], self.arr["year"][cand],
                                    **self.tcfg["era"]))
-        score = rel["w_audio"] * audio + rel["w_style"] * style + rel["w_era"] * era
+        w_a, w_s, w_e = rel["w_audio"], rel["w_style"], rel["w_era"]
+        score = w_a * audio + w_s * style + w_e * era
+        if rel["missing_style"] == "renormalize":
+            # No style vector on either side: drop the style term and rescale the
+            # audio/era weights to sum to 1 (0.35/0.15 -> 0.70/0.30).
+            missing = ~(self.has_style[cand] & self.has_style[i])
+            alt = (w_a * audio + w_e * era) / (w_a + w_e) * (w_a + w_s + w_e)
+            score = np.where(missing, alt, score)
+            style = np.where(missing, np.nan, style)
+        elif rel["missing_style"] != "neutral":
+            raise ValueError(f"unknown missing_style: {rel['missing_style']!r}")
         return {"relevance": score, "audio_sim": audio, "style_sim": style, "era_rel": era}
 
     def transition(self, i: int, cand: np.ndarray) -> dict:
@@ -132,10 +143,29 @@ class Recommender:
         parts["final"] = a * parts["relevance"] + b * parts["transition"]
         key = {"transition": "transition", "audio": "audio_sim",
                "relevance": "relevance", "full": "final"}[method]
-        top = np.argsort(-parts[key], kind="stable")[:n]
+        order = np.argsort(-parts[key], kind="stable")
+        top = self._diversify(cand, order, n)
         out = pd.DataFrame({k: np.asarray(v)[top] for k, v in parts.items()})
         out.insert(0, "idx", cand[top])
         return out
+
+    def _diversify(self, cand: np.ndarray, order: np.ndarray, n: int) -> np.ndarray:
+        """Greedy top-n: skip a candidate once any of its artists has max_per_artist picks."""
+        cap = self.rcfg["ranking"].get("max_per_artist")
+        if not cap:
+            return order[:n]
+        counts: dict[str, int] = {}
+        picked = []
+        for p in order:
+            artists = self.artist_sets[cand[p]]
+            if any(counts.get(a, 0) >= cap for a in artists):
+                continue
+            picked.append(p)
+            for a in artists:
+                counts[a] = counts.get(a, 0) + 1
+            if len(picked) == n:
+                break
+        return np.array(picked, dtype=int)
 
     def next_tracks(self, seed_id: str, n: int = 10, method: str = "full") -> pd.DataFrame:
         i = int(self.id_to_idx[seed_id])

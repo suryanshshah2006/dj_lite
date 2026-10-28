@@ -7,6 +7,7 @@ Metrics per seed track (top-N results):
   labeled@N      how many of the N results have a genre label at all
   trans@N        mean transition_score_v0_1(seed -> result)
   dbpm@N         mean |BPM difference| after half/double-time alignment
+  artists@N      number of distinct primary artists in the list
 
 Usage:
     python src/djlite/evaluate.py
@@ -47,7 +48,7 @@ def evaluate_run(rec: Recommender, genres: list, seeds: np.ndarray, methods: lis
     }
     out = {}
     for m in methods:
-        agree, labeled, trans, dbpm = [], [], [], []
+        agree, labeled, trans, dbpm, artists, length = [], [], [], [], [], []
         for row, i in enumerate(seeds):
             cand = None if m == "transition" else cands["audio" if m == "audio" else "faiss"][row]
             res = rec.rank(int(i), m, n, cand=cand)
@@ -59,12 +60,16 @@ def evaluate_run(rec: Recommender, genres: list, seeds: np.ndarray, methods: lis
             trans.append(res["transition"].mean())
             pct, _, b2 = tempo_octave_align(rec.arr["tempo"][i], rec.arr["tempo"][idx])
             dbpm.append(np.mean(np.abs(rec.arr["tempo"][i] - b2)))
+            artists.append(len({rec.tracks["artist_ids"].iat[j][0] for j in idx}))
+            length.append(len(idx))
         out[m] = {
             "genre_agree": float(np.mean(agree)) if agree else np.nan,
             "seeds_with_label": len(agree) / len(seeds),
             "labeled": float(np.mean(labeled)),
             "trans": float(np.mean(trans)),
             "dbpm": float(np.mean(dbpm)),
+            "unique_artists": float(np.mean(artists)),
+            "list_len": float(np.mean(length)),
         }
     return out
 
@@ -74,6 +79,8 @@ def main() -> None:
     parser.add_argument("--paths", default=PROJECT_ROOT / "configs" / "paths.yaml", type=Path)
     parser.add_argument("--n-seed-tracks", type=int, help="override evaluation.yaml")
     parser.add_argument("--sampling-seeds", type=int, nargs="+", help="override evaluation.yaml")
+    parser.add_argument("--out-name", default="evaluation",
+                        help="basename for reports/<name>.{txt,csv,md}")
     args = parser.parse_args()
 
     paths, rcfg, tcfg = load_configs(args.paths)
@@ -131,30 +138,92 @@ def main() -> None:
                       flush=True)
 
         df = pd.DataFrame(rows)
-        agg = df.groupby(["pool", "method"], sort=False).agg(["mean", "std"])
+        table = summarize(df, ecfg)
         print(f"\nRESULTS: {n_seed_tracks} seed tracks x {len(ecfg['sampling_seeds'])} "
-              f"sampling seeds, top-{n}, mean +- std over runs")
-        print(f"exclude_same_artist={rcfg['retrieval']['exclude_same_artist']}, "
-              f"K={rcfg['retrieval']['k']}, alpha={rcfg['ranking']['alpha']}, "
-              f"beta={rcfg['ranking']['beta']}")
-        hdr = (f"  {'pool':<8} {'method':<40} {'genre_agree@10':>16} {'labeled@10':>12} "
-               f"{'seeds w/ label':>15} {'trans@10':>14} {'|dBPM|@10':>14}")
-        print(hdr)
-        print("  " + "-" * (len(hdr) - 2))
-        for (pool, m), r in agg.iterrows():
-            f = lambda c, p=3: f"{r[(c, 'mean')]:.{p}f} +- {r[(c, 'std')]:.{p}f}"  # noqa: E731
-            print(f"  {pool:<8} {ecfg['methods'][m]:<40} {f('genre_agree'):>16} "
-                  f"{f('labeled', 2):>12} {f('seeds_with_label', 2):>15} {f('trans'):>14} "
-                  f"{f('dbpm', 2):>14}")
-        print("\ngenre_agree is averaged over seeds with >=1 labeled result; "
-              "'seeds w/ label' is that share.")
+              f"sampling seed(s), top-{n}, mean +- std over runs")
+        print(settings_line(rcfg))
+        print(format_table(table, ecfg))
+        print("\ngenre_agree@10 is averaged over seeds with >=1 labeled result "
+              "('seeds w/ label' = that share). Primary protocol: labeled pool.")
 
     report = buf.getvalue()
-    out = PROJECT_ROOT / paths["reports_dir"] / "evaluation.txt"
-    out.write_text(report, encoding="utf-8")
-    df.to_parquet(PROJECT_ROOT / paths["reports_dir"] / "evaluation_runs.parquet", index=False)
+    rdir = PROJECT_ROOT / paths["reports_dir"]
+    (rdir / f"{args.out_name}.txt").write_text(report, encoding="utf-8")
+    table.to_csv(rdir / f"{args.out_name}.csv", index=False)
+    (rdir / f"{args.out_name}.md").write_text(
+        to_markdown(table, ecfg, n_seed_tracks, len(ecfg["sampling_seeds"]), rcfg),
+        encoding="utf-8")
+    df.to_parquet(rdir / f"{args.out_name}_runs.parquet", index=False)
     print(report)
-    print(f"Wrote {out}")
+    print(f"Wrote {rdir / args.out_name}.{{txt,csv,md}}")
+
+
+METRICS = [  # (column, header, decimals)
+    ("genre_agree", "genre agree@10", 3),
+    ("trans", "transition@10", 3),
+    ("dbpm", "|dBPM|@10", 2),
+    ("unique_artists", "unique artists@10", 2),
+    ("labeled", "labeled/list", 2),
+    ("seeds_with_label", "seeds w/ label", 2),
+]
+
+
+def summarize(df: pd.DataFrame, ecfg: dict) -> pd.DataFrame:
+    """One row per (pool, method): <metric>_mean / <metric>_std over sampling seeds."""
+    agg = df.groupby(["pool", "method"], sort=False).agg(["mean", "std"])
+    agg.columns = [f"{c}_{s}" for c, s in agg.columns]
+    agg = agg.drop(columns=["seed_mean", "seed_std"]).reset_index()
+    agg.insert(2, "method_label", agg["method"].map(ecfg["methods"]))
+    agg.insert(3, "n_runs", df.groupby(["pool", "method"], sort=False).size().to_numpy())
+    return agg
+
+
+def _pm(r: pd.Series, col: str, d: int) -> str:
+    m, sd = r[f"{col}_mean"], r[f"{col}_std"]
+    if pd.isna(m):
+        return "n/a"
+    return f"{m:.{d}f}" if pd.isna(sd) else f"{m:.{d}f} +- {sd:.{d}f}"
+
+
+def settings_line(rcfg: dict) -> str:
+    return (f"K={rcfg['retrieval']['k']}, alpha={rcfg['ranking']['alpha']}, "
+            f"beta={rcfg['ranking']['beta']}, "
+            f"exclude_same_artist={rcfg['retrieval']['exclude_same_artist']}, "
+            f"max_per_artist={rcfg['ranking'].get('max_per_artist')}, "
+            f"missing_style={rcfg['relevance']['missing_style']}")
+
+
+def format_table(table: pd.DataFrame, ecfg: dict) -> str:
+    hdr = f"  {'pool':<8} {'method':<40} " + " ".join(f"{h:>18}" for _, h, _ in METRICS)
+    lines = [hdr, "  " + "-" * (len(hdr) - 2)]
+    for _, r in table.iterrows():
+        lines.append(f"  {r['pool']:<8} {r['method_label']:<40} "
+                     + " ".join(f"{_pm(r, c, d):>18}" for c, _, d in METRICS))
+    return "\n".join(lines)
+
+
+def to_markdown(table: pd.DataFrame, ecfg: dict, n_seeds: int, n_runs: int,
+                rcfg: dict) -> str:
+    out = ["# Step 3 evaluation", "",
+           f"{n_seeds} genre-labeled seed tracks x {n_runs} sampling seed(s); "
+           "mean ± std over sampling seeds. Genre labels are evaluation-only.", "",
+           f"Settings: {settings_line(rcfg)}", ""]
+    titles = {"labeled": "Primary: labeled pool (candidates = genre-labeled tracks)",
+              "full": "Secondary: full pool (candidates = all cleaned tracks)"}
+    for pool in table["pool"].unique():
+        out += [f"## {titles.get(pool, pool)}", "",
+                "| method | " + " | ".join(h for _, h, _ in METRICS) + " |",
+                "|---|" + "---:|" * len(METRICS)]
+        for _, r in table[table["pool"] == pool].iterrows():
+            out.append(f"| {r['method_label']} | "
+                       + " | ".join(_pm(r, c, d).replace("+-", "±") for c, _, d in METRICS)
+                       + " |")
+        out.append("")
+    out += ["genre agree@10 = share of genre-labeled results sharing a genre with the seed, "
+            "averaged over seeds with ≥1 labeled result (seeds w/ label). "
+            "|dBPM| is after half/double-time alignment. transition@10 = mean "
+            "transition_score_v0_1(seed → result).", ""]
+    return "\n".join(out)
 
 
 if __name__ == "__main__":
