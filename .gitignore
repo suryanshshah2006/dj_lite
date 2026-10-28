@@ -4,3 +4,10 @@ models/
 __pycache__/
 *.parquet
 *.egg-info/
+# web app
+app/frontend/node_modules/
+app/frontend/.next/
+app/frontend/.env*.local
+app/backend/cache/
+*.sqlite
+*.sqlite3
