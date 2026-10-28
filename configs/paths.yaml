@@ -1,0 +1,12 @@
+paths:
+  raw_csv: data/raw/tracks_features.csv
+  processed_dir: data/processed
+  features_dir: data/features
+  models_dir: models
+  reports_dir: reports
+  figures_dir: reports/figures
+
+inventory:
+  # Durations outside [min, max] are flagged as unusual (not removed).
+  min_duration_s: 30
+  max_duration_s: 1200
