@@ -1,0 +1,13 @@
+pandas
+numpy
+pyarrow
+scikit-learn
+lightgbm
+faiss-cpu
+rapidfuzz
+matplotlib
+plotly
+streamlit
+pyyaml
+tqdm
+pytest
