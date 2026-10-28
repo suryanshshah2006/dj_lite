@@ -1,0 +1,33 @@
+# Track-level features (src/djlite/features.py, pipeline step 2).
+standardize:
+  # Raw columns to z-score; standardized copies get the suffix below.
+  columns:
+    - danceability
+    - energy
+    - loudness
+    - speechiness
+    - acousticness
+    - instrumentalness
+    - liveness
+    - valence
+    - tempo_folded
+  suffix: _z
+
+# Columns carried through unchanged from tracks_clean.parquet.
+keep_columns:
+  - id
+  - name
+  - artists
+  - artist_ids
+  - album
+  - year
+  - release_date
+  - key
+  - mode
+  - tempo
+  - duration_ms
+  - time_signature
+  - is_live
+  - loudness_clipped
+
+scaler_file: scaler.json   # written to paths.models_dir

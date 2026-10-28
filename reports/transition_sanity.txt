@@ -1,0 +1,100 @@
+TRANSITION SCORER v0 - SANITY CHECK
+====================================================================================================
+
+CAMELOT DISTRIBUTION (1,092,454 tracks, null = 0)
+   1A   13,942 (1.28%)     1B   30,821 (2.82%)
+   2A   10,021 (0.92%)     2B   29,635 (2.71%)
+   3A   31,470 (2.88%)     3B   62,507 (5.72%)
+   4A   32,188 (2.95%)     4B   44,769 (4.10%)
+   5A   26,363 (2.41%)     5B   25,659 (2.35%)
+   6A   28,234 (2.58%)     6B   37,772 (3.46%)
+   7A   29,804 (2.73%)     7B   58,076 (5.32%)
+   8A   48,531 (4.44%)     8B  109,325 (10.01%)
+   9A   45,523 (4.17%)     9B  114,319 (10.46%)
+  10A   43,094 (3.94%)    10B  102,415 (9.37%)
+  11A   27,158 (2.49%)    11B   73,230 (6.70%)
+  12A   23,863 (2.18%)    12B   43,735 (4.00%)
+
+RANDOM PAIRS (n=100,000, seed=42)
+  score mean=0.375 std=0.172 min=0.041 max=0.997
+  quantiles: p1=0.096  p5=0.137  p25=0.247  p50=0.336  p75=0.499  p95=0.668  p99=0.851
+  component means: harmonic=0.286  tempo=0.143  energy_smoothness=0.659  timbre=0.504  loudness=0.548  era=0.877
+  harmonic levels: 0.0: 61.5%  0.3: 9.5%  0.6: 8.1%  1.0: 20.9%
+
+TOP 10 NEXT TRACKS PER SEED (full dataset, seed itself excluded)
+bpm = raw tempo; component columns are the per-component scores; dE = signed energy change B - A
+
+[HOUSE]
+SEED: Worship - Duke Dumont (2016)
+      camelot=10A  tempo=126.0 (folded 126.0)  energy=0.78  loudness=-6.3 dB
+   # track                                                 cam    bpm   nrg  year  score |   harm  tempo energy timbre   loud    era     dE
+   1 Anxiety - Full Force Mix - Jason Jazz Edwards          9A  125.0  0.78  2016  0.998 |   1.00   1.00   1.00   0.99   1.00   1.00  -0.00
+   2 This One - Karocel                                    10A  124.0  0.77  2013  0.998 |   1.00   1.00   0.99   0.99   1.00   1.00  -0.01
+   3 4AM - Instrumental - Hail Mary Mallon                 10A  123.9  0.78  2014  0.997 |   1.00   1.00   1.00   0.98   1.00   1.00  -0.00
+   4 10A1 - ItaloJohnson                                   10B  125.4  0.79  2016  0.997 |   1.00   1.00   0.99   0.99   1.00   1.00  +0.01
+   5 Plural oder Singular - Freunde der Technik            10A  127.0  0.79  2019  0.997 |   1.00   1.00   0.99   0.99   1.00   1.00  +0.01
+   6 Faeries (Live) - Mannheim Steamroller                 10A  125.0  0.78  2015  0.996 |   1.00   1.00   1.00   0.98   1.00   1.00  -0.00
+   7 Temptation (Robot Edit) - Estate                      10A  125.0  0.79  2011  0.995 |   1.00   1.00   0.99   0.98   1.00   1.00  +0.01
+   8 Roach - Mixed - Barakas                               10A  125.0  0.80  2019  0.995 |   1.00   1.00   0.98   0.99   1.00   1.00  +0.02
+   9 Like It Is - Mixed - Coeo                             10A  124.0  0.78  2018  0.995 |   1.00   1.00   1.00   0.97   1.00   1.00  +0.00
+  10 Move Me - Snuff Crew                                  10B  124.0  0.75  2013  0.995 |   1.00   1.00   0.97   1.00   1.00   1.00  -0.03
+
+[POP]
+SEED: Shape of You - Ed Sheeran (2017)
+      camelot=12A  tempo=96.0 (folded 96.0)  energy=0.65  loudness=-3.2 dB
+   # track                                                 cam    bpm   nrg  year  score |   harm  tempo energy timbre   loud    era     dE
+   1 Beauty - Bez Idakula, The Cavemen.                    12A   94.9  0.62  2019  0.994 |   1.00   1.00   0.97   0.99   0.99   1.00  -0.03
+   2 Good Place - The Family Sowell                        12B   96.9  0.64  2020  0.993 |   1.00   1.00   0.99   0.96   1.00   1.00  -0.01
+   3 Hob - Jain                                            12B   97.0  0.68  2016  0.993 |   1.00   1.00   0.97   0.98   1.00   1.00  +0.03
+   4 Immortal - Simi, Maleek Berry                         11A   96.1  0.63  2019  0.992 |   1.00   1.00   0.98   0.97   1.00   1.00  -0.02
+   5 Rewind - Dwin, The Stoic, Rhaffy                      11A   95.0  0.69  2019  0.990 |   1.00   1.00   0.96   0.97   1.00   1.00  +0.04
+   6 Basic - Haley Smalls                                  12A   94.0  0.64  2018  0.990 |   1.00   0.99   0.99   0.97   1.00   1.00  -0.01
+   7 Soy lo que Soy - Ana Belén                            11A   94.9  0.65  2018  0.989 |   1.00   1.00   1.00   0.93   1.00   1.00  -0.00
+   8 Doy Mi Palabra de Honor - Nelson Meza                 12A   97.5  0.60  2013  0.989 |   1.00   1.00   0.95   0.98   1.00   1.00  -0.05
+   9 Who Can Blame Me - live - JT The Bigga Figga           1A   95.0  0.64  2006  0.988 |   1.00   1.00   0.99   0.97   1.00   0.88  -0.01
+  10 Ventana del Alma - Marimba Orquesta La Pegajosa       12A   97.0  0.71  2016  0.988 |   1.00   1.00   0.95   0.98   1.00   1.00  +0.05
+
+[ROCK]
+SEED: Everlong - Foo Fighters (1997)
+      camelot=10A  tempo=158.1 (folded 158.1)  energy=0.88  loudness=-5.5 dB
+   # track                                                 cam    bpm   nrg  year  score |   harm  tempo energy timbre   loud    era     dE
+   1 I'm Alive - Helloween Cover Version - Luca Turilli    11A  155.0  0.89  2002  0.997 |   1.00   1.00   0.99   0.99   1.00   1.00  +0.01
+   2 Let Us Now Die Famous Men - Christiansen              10B  158.6  0.88  2002  0.996 |   1.00   1.00   1.00   0.97   1.00   1.00  -0.00
+   3 Lost (In Retrospect) - Brave                          10A  156.1  0.90  2001  0.995 |   1.00   1.00   0.98   0.99   1.00   1.00  +0.02
+   4 Guilt - Fingertight                                   10A  158.3  0.87  2003  0.995 |   1.00   1.00   0.99   0.99   1.00   0.98  -0.01
+   5 Vapor Lock - Cober                                    10B  160.1  0.90  2002  0.994 |   1.00   1.00   0.98   0.98   1.00   1.00  +0.02
+   6 Bobby Kennedy - Cherry Poppin' Daddies                10B   78.7  0.87  1994  0.994 |   1.00   1.00   0.99   0.97   1.00   1.00  -0.01
+   7 Freewill - Gregoor van der Loo, Marcel Coenen, Tr...  10B  155.1  0.85  1996  0.994 |   1.00   1.00   0.97   0.98   1.00   1.00  -0.03
+   8 Who's My Wife - Kjehl Johansen                         9A   78.8  0.84  2003  0.993 |   1.00   1.00   0.96   1.00   1.00   0.98  -0.04
+   9 It's Not (New) - Haffo                                10A   80.0  0.90  2005  0.993 |   1.00   1.00   0.98   1.00   1.00   0.94  +0.02
+  10 Paperweight - Winston                                 10B  158.4  0.90  2004  0.993 |   1.00   1.00   0.98   0.99   1.00   0.96  +0.02
+
+[HIP-HOP]
+SEED: Juicy - The Notorious B.I.G. (2007)
+      camelot=11B  tempo=97.4 (folded 97.4)  energy=0.77  loudness=-4.3 dB
+   # track                                                 cam    bpm   nrg  year  score |   harm  tempo energy timbre   loud    era     dE
+   1 Hey girl (Feat. Cordova, Big Metra & Katy Celina)...  12B   96.0  0.77  2008  0.997 |   1.00   1.00   1.00   0.98   1.00   1.00  -0.00
+   2 Hood Down Unda (Triple C) - live recording - Slee...  11A   96.7  0.77  2006  0.997 |   1.00   1.00   1.00   0.98   1.00   1.00  +0.00
+   3 The Stakes Is High - Black C, Big MoMo                11A   97.0  0.77  2004  0.996 |   1.00   1.00   0.99   0.98   1.00   1.00  +0.01
+   4 Mienten - Bagdad Rap, Kase.O, Kamel                   10B   96.0  0.77  2005  0.996 |   1.00   1.00   0.99   0.98   1.00   1.00  +0.01
+   5 Psychosis (feat. Dem Atlas) - Christopher Michael...  11B   97.5  0.75  2014  0.995 |   1.00   1.00   0.99   1.00   1.00   0.96  -0.01
+   6 Husslin' - Cassidy                                    11A   96.9  0.76  2004  0.995 |   1.00   1.00   0.99   0.99   0.97   1.00  -0.01
+   7 (Move In The House) - Figureheads                     10B   97.0  0.78  2007  0.995 |   1.00   1.00   0.98   0.98   1.00   1.00  +0.02
+   8 Qu'est-ce tu veux? - The Structure                    11B   96.0  0.78  2009  0.994 |   1.00   1.00   0.98   0.98   0.99   1.00  +0.02
+   9 Hammer Time- featuring Al Tariq, Problemz, Marly ...  10B   98.6  0.77  2001  0.994 |   1.00   1.00   0.99   0.97   1.00   0.98  +0.01
+  10 Take Over - MOK, G-Hot                                10B   96.0  0.78  2008  0.994 |   1.00   1.00   0.98   0.98   1.00   1.00  +0.02
+
+[ACOUSTIC]
+SEED: Fast Car - Tracy Chapman (1988)
+      camelot=9A  tempo=104.0 (folded 104.0)  energy=0.29  loudness=-15.5 dB
+   # track                                                 cam    bpm   nrg  year  score |   harm  tempo energy timbre   loud    era     dE
+   1 Buttons of Your Skin (Bonus Track) - Jo Carol Pierce   9A  105.9  0.29  1995  0.993 |   1.00   1.00   1.00   0.97   1.00   0.96  +0.00
+   2 Isn't She Lovely - Keb' Mo'                            9B  103.2  0.30  2001  0.988 |   1.00   1.00   1.00   0.98   1.00   0.84  +0.00
+   3 You Go to My Head - Etta James                         8A  105.9  0.26  1999  0.986 |   1.00   1.00   0.97   0.98   1.00   0.88  -0.03
+   4 Métro - Edgar Bori                                     8A  102.0  0.30  1997  0.985 |   1.00   1.00   1.00   0.97   0.89   0.92  +0.00
+   5 Last To Know - Spirit Of The West                      9B  103.4  0.27  1990  0.983 |   1.00   1.00   0.98   0.91   1.00   1.00  -0.02
+   6 I'll Tell You Now - Lindsey Buckingham                 9B  102.3  0.36  1981  0.981 |   1.00   1.00   0.93   0.95   1.00   0.96  +0.07
+   7 Is It Love (feat.Nadia Ali) - iio, Nadia Ali           9B  102.0  0.32  2006  0.981 |   1.00   1.00   0.98   0.98   1.00   0.74  +0.02
+   8 Is It Love? (feat.Nadia Ali) - iio                     9B  102.0  0.32  2006  0.981 |   1.00   1.00   0.98   0.98   1.00   0.74  +0.02
+   9 Cold and Gray - Lauren Hoffman                         9B  105.0  0.29  1997  0.980 |   1.00   1.00   1.00   0.90   1.00   0.92  -0.00
+  10 Built on Amazing Grace - 4Him                          9B  105.8  0.34  1992  0.979 |   1.00   1.00   0.95   0.92   1.00   1.00  +0.05

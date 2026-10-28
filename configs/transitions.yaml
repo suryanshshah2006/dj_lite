@@ -1,0 +1,45 @@
+# Rule-based transition scorer v0 (src/djlite/transitions.py).
+
+weights:                 # normalized by their sum, so the score stays in [0, 1]
+  harmonic: 0.30
+  tempo: 0.30
+  energy_smoothness: 0.15
+  timbre: 0.15
+  loudness: 0.05
+  era: 0.05
+
+harmonic:
+  compatible: 1.0        # same code, +-1 same letter, or same number other letter
+  diagonal: 0.6          # +-1 number with a letter switch
+  two_step: 0.3          # +-2 number, same letter
+  other: 0.0
+  null_key: 0.5          # either key unknown
+
+tempo:
+  full_pct: 0.02         # 1.0 at or below this percent difference
+  zero_pct: 0.08         # 0.0 at or above
+  octave_wrap: true      # also compare across the 80/160 fold seam (e.g. 159 vs 81)
+
+loudness:
+  full_db: 3.0           # 1.0 at or below this |delta dB|
+  zero_db: 10.0          # 0.0 at or above
+
+timbre:
+  # Standardized columns (features.yaml suffix is appended).
+  columns: [danceability, acousticness, instrumentalness, speechiness, valence]
+
+era:
+  full_years: 5          # 1.0 within this gap
+  floor_years: 30        # reaches min_score at this gap and beyond
+  min_score: 0.5
+
+sanity:
+  random_pairs: 100000
+  random_seed: 42
+  top_n: 10
+  seeds:
+    - {label: house,   id: 1LPGNTuBxFsfy0KFtU4WAW}   # Duke Dumont - Worship
+    - {label: pop,     id: 0FE9t6xYkqWXU2ahLh6D8X}   # Ed Sheeran - Shape of You
+    - {label: rock,    id: 5UWwZ5lm5PKu6eKsHAGxOk}   # Foo Fighters - Everlong
+    - {label: hip-hop, id: 2AP7m2dBb8ULTx4Gc1rdMc}   # The Notorious B.I.G. - Juicy
+    - {label: acoustic, id: 2M9ro2krNb7nr7HSprkEgo}  # Tracy Chapman - Fast Car
