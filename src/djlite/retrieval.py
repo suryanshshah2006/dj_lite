@@ -112,6 +112,11 @@ class Recommender:
             ok &= np.array([not (self.artist_sets[j] & seed_artists) for j in cand], bool)
         return ok
 
+    def combined_vectors(self, idx: np.ndarray) -> np.ndarray:
+        """The audio + style vectors the FAISS index searches over (unit-normalized)."""
+        v = np.asarray(self.index.reconstruct_batch(np.asarray(idx, dtype=np.int64)))
+        return l2_normalize(v)
+
     def retrieve(self, seeds: np.ndarray, k: int | None = None,
                  audio_only: bool = False) -> np.ndarray:
         """Batched FAISS top-k candidate indices, shape (len(seeds), k)."""
@@ -127,6 +132,13 @@ class Recommender:
     def rank(self, i: int, method: str = "full", n: int = 10,
              cand: np.ndarray | None = None) -> pd.DataFrame:
         """Top-n next tracks for seed index i. `cand` = precomputed FAISS candidates."""
+        cap = self.rcfg["ranking"].get("max_per_artist")
+        return self.rank_lists(i, method, n, cand, caps=(cap,))[cap]
+
+    def rank_lists(self, i: int, method: str, n: int, cand: np.ndarray | None = None,
+                   caps: tuple = (None,)) -> dict:
+        """Score candidates once; return {cap: top-n DataFrame} for each max_per_artist cap
+        (None = uncapped). Lets evaluation get capped and uncapped lists in one pass."""
         if method == "transition":
             # Full scan over the pool; keep a margin for exclusions.
             s = self.transition(i, np.arange(len(self.tracks)))["score"]
@@ -144,14 +156,17 @@ class Recommender:
         key = {"transition": "transition", "audio": "audio_sim",
                "relevance": "relevance", "full": "final"}[method]
         order = np.argsort(-parts[key], kind="stable")
-        top = self._diversify(cand, order, n)
-        out = pd.DataFrame({k: np.asarray(v)[top] for k, v in parts.items()})
-        out.insert(0, "idx", cand[top])
-        return out
+        lists = {}
+        for cap in caps:
+            top = self._diversify(cand, order, n, cap)
+            out = pd.DataFrame({k: np.asarray(v)[top] for k, v in parts.items()})
+            out.insert(0, "idx", cand[top])
+            lists[cap] = out
+        return lists
 
-    def _diversify(self, cand: np.ndarray, order: np.ndarray, n: int) -> np.ndarray:
-        """Greedy top-n: skip a candidate once any of its artists has max_per_artist picks."""
-        cap = self.rcfg["ranking"].get("max_per_artist")
+    def _diversify(self, cand: np.ndarray, order: np.ndarray, n: int,
+                   cap: int | None) -> np.ndarray:
+        """Greedy top-n: skip a candidate once any of its artists has `cap` picks."""
         if not cap:
             return order[:n]
         counts: dict[str, int] = {}

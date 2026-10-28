@@ -7,7 +7,11 @@ Metrics per seed track (top-N results):
   labeled@N      how many of the N results have a genre label at all
   trans@N        mean transition_score_v0_1(seed -> result)
   dbpm@N         mean |BPM difference| after half/double-time alignment
-  artists@N      number of distinct primary artists in the list
+  ild@N          intra-list diversity: mean pairwise cosine distance (1 - cos) between
+                 the results' combined audio + style vectors (the FAISS search space)
+  artist_rep@N   artist repetition rate on the UNCAPPED top-N (max_per_artist off):
+                 share of results that share an artist with a higher-ranked result
+All other metrics use the capped list (max_per_artist from retrieval.yaml).
 
 Usage:
     python src/djlite/evaluate.py
@@ -46,12 +50,14 @@ def evaluate_run(rec: Recommender, genres: list, seeds: np.ndarray, methods: lis
         "faiss": rec.retrieve(seeds),
         "audio": rec.retrieve(seeds, k=rec.rcfg["retrieval"]["k"], audio_only=True),
     }
+    cap = rec.rcfg["ranking"].get("max_per_artist")
     out = {}
     for m in methods:
-        agree, labeled, trans, dbpm, artists, length = [], [], [], [], [], []
+        agree, labeled, trans, dbpm, ild, rep, length = [], [], [], [], [], [], []
         for row, i in enumerate(seeds):
             cand = None if m == "transition" else cands["audio" if m == "audio" else "faiss"][row]
-            res = rec.rank(int(i), m, n, cand=cand)
+            lists = rec.rank_lists(int(i), m, n, cand=cand, caps=(cap, None))
+            res = lists[cap]
             idx = res["idx"].to_numpy()
             g = [genres[j] for j in idx if genres[j] is not None]
             labeled.append(len(g))
@@ -60,7 +66,8 @@ def evaluate_run(rec: Recommender, genres: list, seeds: np.ndarray, methods: lis
             trans.append(res["transition"].mean())
             pct, _, b2 = tempo_octave_align(rec.arr["tempo"][i], rec.arr["tempo"][idx])
             dbpm.append(np.mean(np.abs(rec.arr["tempo"][i] - b2)))
-            artists.append(len({rec.tracks["artist_ids"].iat[j][0] for j in idx}))
+            ild.append(intra_list_diversity(rec.combined_vectors(idx)))
+            rep.append(artist_repetition(rec, lists[None]["idx"].to_numpy()))
             length.append(len(idx))
         out[m] = {
             "genre_agree": float(np.mean(agree)) if agree else np.nan,
@@ -68,10 +75,31 @@ def evaluate_run(rec: Recommender, genres: list, seeds: np.ndarray, methods: lis
             "labeled": float(np.mean(labeled)),
             "trans": float(np.mean(trans)),
             "dbpm": float(np.mean(dbpm)),
-            "unique_artists": float(np.mean(artists)),
+            "ild": float(np.nanmean(ild)),
+            "artist_rep": float(np.mean(rep)),
             "list_len": float(np.mean(length)),
         }
     return out
+
+
+def intra_list_diversity(vecs: np.ndarray) -> float:
+    """Mean pairwise cosine distance between unit vectors (nan for < 2 items)."""
+    k = len(vecs)
+    if k < 2:
+        return np.nan
+    sims = vecs @ vecs.T
+    return float(1.0 - sims[np.triu_indices(k, 1)].mean())
+
+
+def artist_repetition(rec: Recommender, idx: np.ndarray) -> float:
+    """Share of results sharing any artist with a higher-ranked result in the list."""
+    seen: set = set()
+    repeats = 0
+    for j in idx:
+        artists = rec.artist_sets[j]
+        repeats += bool(artists & seen)
+        seen |= artists
+    return repeats / len(idx) if len(idx) else np.nan
 
 
 def main() -> None:
@@ -145,6 +173,8 @@ def main() -> None:
         print(format_table(table, ecfg))
         print("\ngenre_agree@10 is averaged over seeds with >=1 labeled result "
               "('seeds w/ label' = that share). Primary protocol: labeled pool.")
+        print("artist rep is measured on the uncapped top-10; all other columns on the "
+              "capped list.\n\nKNOWN LIMITATIONS\n" + LIMITATIONS)
 
     report = buf.getvalue()
     rdir = PROJECT_ROOT / paths["reports_dir"]
@@ -162,7 +192,8 @@ METRICS = [  # (column, header, decimals)
     ("genre_agree", "genre agree@10", 3),
     ("trans", "transition@10", 3),
     ("dbpm", "|dBPM|@10", 2),
-    ("unique_artists", "unique artists@10", 2),
+    ("ild", "ILD@10", 3),
+    ("artist_rep", "artist rep (uncapped)", 3),
     ("labeled", "labeled/list", 2),
     ("seeds_with_label", "seeds w/ label", 2),
 ]
@@ -222,8 +253,30 @@ def to_markdown(table: pd.DataFrame, ecfg: dict, n_seeds: int, n_runs: int,
     out += ["genre agree@10 = share of genre-labeled results sharing a genre with the seed, "
             "averaged over seeds with ≥1 labeled result (seeds w/ label). "
             "|dBPM| is after half/double-time alignment. transition@10 = mean "
-            "transition_score_v0_1(seed → result).", ""]
+            "transition_score_v0_1(seed → result). ILD@10 = mean pairwise cosine distance "
+            "between results' combined audio + style vectors. artist rep (uncapped) = share "
+            "of results in the top-10 *without* the max_per_artist cap that share an artist "
+            "with a higher-ranked result; every other column uses the capped list.", "",
+            "## Known limitations", "",
+            LIMITATIONS, ""]
     return "\n".join(out)
+
+
+LIMITATIONS = (
+    "- **FAISS missing-style retrieval bias.** Retrieval searches "
+    "[sqrt(w_audio)·audio, sqrt(w_style)·style]. A candidate without a style vector "
+    "(artist on no shared album; ~38% of tracks) has a zero style block, so for a seed "
+    "*with* style its inner product is only w_audio·cos_audio and it ranks below "
+    "styled candidates in the top-K. Exact re-ranking renormalizes the relevance for "
+    "such candidates (0.70 audio / 0.30 era), but it can only re-rank what FAISS "
+    "returned, so style-less tracks are under-represented for methods (c) and (d). "
+    "For a seed without style, the query's style block is zero and retrieval is "
+    "audio-only, which is unbiased.\n"
+    "- Method (a) scans the whole pool; (b) uses an audio-only index; (c) and (d) "
+    "re-rank the top K=500 from the combined index.\n"
+    "- Genre labels come from a different Kaggle dataset matched by track ID; a track "
+    "can carry several genres there, and any overlap counts as agreement."
+)
 
 
 if __name__ == "__main__":
