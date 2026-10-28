@@ -35,8 +35,8 @@ def _ramp_down(x, full, zero):
     return np.clip((zero - x) / (zero - full), 0.0, 1.0)
 
 
-def harmonic_score(num_a, letter_a, num_b, letter_b, *, compatible, diagonal, two_step,
-                   other, null_key):
+def harmonic_score(num_a, letter_a, num_b, letter_b, *, same, adjacent, relative, diagonal,
+                   two_step, other, null_key):
     """Camelot compatibility with circular distance on the 12-number wheel."""
     na = np.asarray(num_a, dtype=float)
     nb = np.asarray(num_b, dtype=float)
@@ -44,10 +44,11 @@ def harmonic_score(num_a, letter_a, num_b, letter_b, *, compatible, diagonal, tw
     lb = np.asarray(letter_b, dtype=object)
     diff = np.abs(na - nb) % 12
     dist = np.minimum(diff, 12 - diff)
-    same = la == lb
+    same_letter = la == lb
     score = np.select(
-        [same & (dist <= 1), ~same & (dist == 0), ~same & (dist == 1), same & (dist == 2)],
-        [compatible, compatible, diagonal, two_step],
+        [same_letter & (dist == 0), same_letter & (dist == 1), ~same_letter & (dist == 0),
+         ~same_letter & (dist == 1), same_letter & (dist == 2)],
+        [same, adjacent, relative, diagonal, two_step],
         default=other,
     ).astype(float)
     score = np.where(np.isnan(na) | np.isnan(nb), null_key, score)
@@ -70,6 +71,27 @@ def tempo_pct_diff(tempo_a, tempo_b, *, octave_wrap):
 def tempo_score(tempo_a, tempo_b, *, full_pct, zero_pct, octave_wrap):
     pct = tempo_pct_diff(tempo_a, tempo_b, octave_wrap=octave_wrap)
     return _out(_ramp_down(np.asarray(pct), full_pct, zero_pct))
+
+
+def tempo_octave_align(tempo_a, tempo_b):
+    """Halve/double B to the power-of-2 multiple nearest A (in log space).
+
+    Returns (pct difference |a - b'| / min(a, b'), octave shift k, aligned b').
+    k != 0 means a half- or double-time match.
+    """
+    a = np.asarray(tempo_a, dtype=float)
+    b = np.asarray(tempo_b, dtype=float)
+    k = np.round(np.log2(b / a))
+    b2 = b / np.exp2(k)
+    pct = np.abs(a - b2) / np.minimum(a, b2)
+    return pct, k, b2
+
+
+def tempo_score_v0_1(tempo_a, tempo_b, *, sigma, octave_penalty):
+    """exp(-(pct/sigma)^2) on raw tempos after octave alignment, penalized if k != 0."""
+    pct, k, _ = tempo_octave_align(tempo_a, tempo_b)
+    score = np.exp(-((pct / sigma) ** 2)) * np.where(k != 0, octave_penalty, 1.0)
+    return _out(score)
 
 
 def energy_delta(energy_a, energy_b):
@@ -117,29 +139,47 @@ def _col(x: TrackLike, name: str, dtype=float):
     if isinstance(x, pd.DataFrame):
         return x[name].to_numpy(dtype=dtype, na_value=na_value)
     v = x[name]
+    if isinstance(v, np.ndarray):  # dict of precomputed arrays (see retrieval.py)
+        return v
     return na_value if pd.isna(v) else (float(v) if dtype is float else v)
 
 
 def _vec(x: TrackLike, names: list[str]) -> np.ndarray:
     if isinstance(x, pd.DataFrame):
         return x[names].to_numpy(dtype=float)
+    if isinstance(x[names[0]], np.ndarray):
+        return np.column_stack([x[n] for n in names])
     return np.array([float(x[n]) for n in names])
 
 
 def transition_score_v0(a: TrackLike, b: TrackLike, cfg: dict, z_suffix: str = "_z") -> dict:
     """Score A -> B. Returns {component: value, 'energy_delta': ..., 'score': ...}.
 
-    a, b: a single track (Series/dict) or many (DataFrame). One track vs a DataFrame
-    scores against every row; two equal-length DataFrames score row-aligned pairs.
+    a, b: a single track (Series/dict) or many (DataFrame, or dict of arrays). One track
+    vs many scores against every row; two equal-length inputs score row-aligned pairs.
     """
-    h, t, ld, e = cfg["harmonic"], cfg["tempo"], cfg["loudness"], cfg["era"]
+    tempo = tempo_score(_col(a, "tempo_folded"), _col(b, "tempo_folded"), **cfg["tempo"])
+    return _combine(a, b, cfg, cfg["harmonic"], tempo, z_suffix)
+
+
+def transition_score_v0_1(a: TrackLike, b: TrackLike, cfg: dict,
+                          z_suffix: str = "_z") -> dict:
+    """v0.1: v0 with the v0_1 harmonic table and the Gaussian, octave-aware tempo score."""
+    v = cfg["v0_1"]
+    tempo = tempo_score_v0_1(_col(a, "tempo"), _col(b, "tempo"), **v["tempo"])
+    return _combine(a, b, cfg, v["harmonic"], tempo, z_suffix)
+
+
+def _combine(a: TrackLike, b: TrackLike, cfg: dict, harm_cfg: dict, tempo,
+             z_suffix: str) -> dict:
+    ld, e = cfg["loudness"], cfg["era"]
     timbre_cols = [c + z_suffix for c in cfg["timbre"]["columns"]]
 
     parts = {
         "harmonic": harmonic_score(
             _col(a, "camelot_num"), _col(a, "camelot_letter", object),
-            _col(b, "camelot_num"), _col(b, "camelot_letter", object), **h),
-        "tempo": tempo_score(_col(a, "tempo_folded"), _col(b, "tempo_folded"), **t),
+            _col(b, "camelot_num"), _col(b, "camelot_letter", object), **harm_cfg),
+        "tempo": tempo,
         "energy_smoothness": energy_smoothness(_col(a, "energy"), _col(b, "energy")),
         "timbre": timbre_similarity(_vec(a, timbre_cols), _vec(b, timbre_cols)),
         "loudness": loudness_score(_col(a, "loudness"), _col(b, "loudness"), **ld),
@@ -153,7 +193,11 @@ def transition_score_v0(a: TrackLike, b: TrackLike, cfg: dict, z_suffix: str = "
     return parts
 
 
-def score_candidates(seed: TrackLike, candidates: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+SCORERS = {"v0": transition_score_v0, "v0_1": transition_score_v0_1}
+
+
+def score_candidates(seed: TrackLike, candidates: pd.DataFrame, cfg: dict,
+                     version: str = "v0") -> pd.DataFrame:
     """Score one seed against every candidate row; returns a breakdown DataFrame."""
-    res = transition_score_v0(seed, candidates, cfg)
+    res = SCORERS[version](seed, candidates, cfg)
     return pd.DataFrame(res, index=candidates.index)

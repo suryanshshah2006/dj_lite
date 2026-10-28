@@ -14,103 +14,110 @@ drop: speechiness > 0.66                                       -8,284   -> 1,157
   (no drop) loudness > 0.0 dB clipped                             514 rows affected
   (no drop) is_live (liveness > 0.8)                           25,434 rows affected
 drop: duplicate song (name_norm + artists)                    -65,206   -> 1,092,454
-Final rows                                                  1,092,454   (90.7% of input, 111,571 removed)
+  (no drop) pass-2 candidate merges rejected (artist sets not nested)     13,218 rows affected
+drop: duplicate song pass 2 (no feat. + primary artist)        -2,638   -> 1,089,816
+  (no drop) pass-2 merges with |duration gap| > 30 s (possible distinct songs)        674 rows affected
+Final rows                                                  1,089,816   (90.5% of input, 114,209 removed)
 
-Deduplication: 65,206 rows merged into 48,290 kept songs.
+Deduplication: pass 1 merged 65,206 rows, pass 2 merged 2,638 more; 50,063 kept songs absorb duplicates.
+Artist-album links (from all raw rows): 309,774 (140,449 artists, 118,382 albums)
 Columns: ['id', 'name', 'album', 'album_id', 'artists', 'artist_ids', 'track_number', 'disc_number', 'explicit', 'danceability', 'energy', 'key', 'loudness', 'mode', 'speechiness', 'acousticness', 'instrumentalness', 'liveness', 'valence', 'tempo', 'duration_ms', 'time_signature', 'year', 'release_date', 'loudness_clipped', 'is_live', 'tempo_folded', 'name_norm']
 
-15 RANDOM DEDUP MERGES
+15 RANDOM PASS-1 MERGES
 ================================================================================
-  artists: ['Michael Jackson']
-    KEPT    1982-11-30  Human Nature
-    DROPPED 2005-07-19  Human Nature
-  artists: ['Tom Browne']
-    KEPT    1980-02-01  Martha
-    DROPPED 1997-07-16  Martha
-  artists: ['Faith No More']
-    KEPT    1989        Zombie Eaters
-    DROPPED 2018-04-20  Zombie Eaters
-  artists: ['Stephen Walking']
-    KEPT    2013-03-09  Motions
-    DROPPED 2013-07-02  Motions
-  artists: ['Lonnie Brooks']
-    KEPT    1981        Eyeballin'
-    DROPPED 1988        Eyeballin'
-  artists: ['Jeb Loy Nichols']
-    KEPT    2008-05-06  Days Are Mighty
-    DROPPED 2009-01-13  Days Are Mighty
-  artists: ['Aretha Franklin']
-    KEPT    1970-01-15  Share Your Love with Me
-    DROPPED 1994-03-22  Share Your Love with Me
-  artists: ['Kathleen Scheide']
-    KEPT    2006-05-11  Sarabande
-    DROPPED 2006-05-11  Sarabande
-  artists: ['Victor Lewis']
-    KEPT    1993-11-22  Tuda Muda
-    DROPPED 2005-01-01  Tuda Muda
-  artists: ['Sergei Prokofiev', 'Royal Scottish National Orchestra', 'Neeme Järvi']
-    KEPT    1989-11-01  L'enfant prodigue (The Prodigal Son), Op. 46: Scene 2: Reveil et remords (Awakening and remorse)
-    DROPPED 2008-08-26  L'enfant prodigue (The Prodigal Son), Op. 46: Scene 2: Reveil et remords (Awakening and remorse)
-  artists: ['"Weird Al" Yankovic']
-    KEPT    1985-06-18  I Want a New Duck
-    DROPPED 1994-09-27  I Want a New Duck
-  artists: ['James Wall']
-    KEPT    2011-02-22  East Virginia Blues
-    DROPPED 2014-03-04  East Virginia Blues
-  artists: ['The City of Prague Philharmonic Orchestra']
-    KEPT    2003-10-07  Fawkes The Phoenix (From "Harry Potter and the Chamber of Secrets")
-    DROPPED 2012-02-21  Fawkes The Phoenix (From "Harry Potter and the Chamber of Secrets")
-  artists: ['Louis Armstrong & His Hot Five']
-    KEPT    1917        West End Blues
-    DROPPED 2000-11-03  West End Blues
-  artists: ['Fleetwood Mac']
-    KEPT    1977-02-04  Never Going Back Again - 2004 Remaster
-    DROPPED 2018-11-16  Never Going Back Again - 2013 Remaster
+    KEPT    1982-11-30  Human Nature  ['Michael Jackson']
+    DROPPED 2005-07-19  Human Nature  ['Michael Jackson']
+    KEPT    1980-02-01  Martha  ['Tom Browne']
+    DROPPED 1997-07-16  Martha  ['Tom Browne']
+    KEPT    1989        Zombie Eaters  ['Faith No More']
+    DROPPED 2018-04-20  Zombie Eaters  ['Faith No More']
+    KEPT    2013-03-09  Motions  ['Stephen Walking']
+    DROPPED 2013-07-02  Motions  ['Stephen Walking']
+    KEPT    1981        Eyeballin'  ['Lonnie Brooks']
+    DROPPED 1988        Eyeballin'  ['Lonnie Brooks']
+    KEPT    2008-05-06  Days Are Mighty  ['Jeb Loy Nichols']
+    DROPPED 2009-01-13  Days Are Mighty  ['Jeb Loy Nichols']
+    KEPT    1970-01-15  Share Your Love with Me  ['Aretha Franklin']
+    DROPPED 1994-03-22  Share Your Love with Me  ['Aretha Franklin']
+    KEPT    2006-05-11  Sarabande  ['Kathleen Scheide']
+    DROPPED 2006-05-11  Sarabande  ['Kathleen Scheide']
+    KEPT    1993-11-22  Tuda Muda  ['Victor Lewis']
+    DROPPED 2005-01-01  Tuda Muda  ['Victor Lewis']
+    KEPT    1989-11-01  L'enfant prodigue (The Prodigal Son), Op. 46: Scene 2: Reveil et remords (Awakening and remorse)  ['Sergei Prokofiev', 'Royal Scottish National Orchestra', 'Neeme Järvi']
+    DROPPED 2008-08-26  L'enfant prodigue (The Prodigal Son), Op. 46: Scene 2: Reveil et remords (Awakening and remorse)  ['Sergei Prokofiev', 'Royal Scottish National Orchestra', 'Neeme Järvi']
+    KEPT    1985-06-18  I Want a New Duck  ['"Weird Al" Yankovic']
+    DROPPED 1994-09-27  I Want a New Duck  ['"Weird Al" Yankovic']
+    KEPT    2011-02-22  East Virginia Blues  ['James Wall']
+    DROPPED 2014-03-04  East Virginia Blues  ['James Wall']
+    KEPT    2003-10-07  Fawkes The Phoenix (From "Harry Potter and the Chamber of Secrets")  ['The City of Prague Philharmonic Orchestra']
+    DROPPED 2012-02-21  Fawkes The Phoenix (From "Harry Potter and the Chamber of Secrets")  ['The City of Prague Philharmonic Orchestra']
+    KEPT    1917        West End Blues  ['Louis Armstrong & His Hot Five']
+    DROPPED 2000-11-03  West End Blues  ['Louis Armstrong & His Hot Five']
+    KEPT    1977-02-04  Never Going Back Again - 2004 Remaster  ['Fleetwood Mac']
+    DROPPED 2018-11-16  Never Going Back Again - 2013 Remaster  ['Fleetwood Mac']
 
-15 RANDOM DEDUP MERGES WHERE THE RAW NAMES DIFFER
+15 RANDOM PASS-1 MERGES WHERE THE RAW NAMES DIFFER
 ================================================================================
-  artists: ['Rose Royce']
-    KEPT    2017-10-31  Wishing on a Star
-    DROPPED 2018-11-23  Wishing On a Star
-  artists: ['Ludwig van Beethoven', 'Jenő Jandó', 'Takako Nishizaki']
-    KEPT    1990-03-15  Violin Sonata No. 5 In F Major, Op. 24, "Spring": II. Adagio Molto Espressivo
-    DROPPED 2005-01-01  Violin Sonata No. 5 in F Major, Op. 24, "Spring": II. Adagio molto espressivo
-  artists: ['Al Jarreau']
-    KEPT    2006-12-12  I'm Still In Love With You
-    DROPPED 2014-10-06  I'm Still in Love with You - Digitally Re-Mastered
-  artists: ['The Notorious B.I.G.']
-    KEPT    2001-09-11  Big Poppa
-    DROPPED 2007-03-05  Big Poppa - 2007 Remaster
-  artists: ['Dr. Hook']
-    KEPT    1969        The Cover of "Rolling Stone"
-    DROPPED 2009-01-16  The Cover Of "Rolling Stone"
-  artists: ['Emmylou Harris', 'Sharon', 'Cheryl White']
-    KEPT    1979        Sorrow in the Wind - Remastered
-    DROPPED 2007-09-17  Sorrow in the Wind - 2007 Remaster
-  artists: ['Joe Williams']
-    KEPT    1996        Every Day I Have The Blues
-    DROPPED 2002-04-01  Every Day I Have The Blues - 2002 Remastered
-  artists: ['Henry Mancini']
-    KEPT    2000-09-14  Whistling Away The Dark - REMASTERED
-    DROPPED 2004-03-11  Whistling Away the Dark
-  artists: ['The Delfonics']
-    KEPT    1972        Walk Right Up to the Sun
-    DROPPED 1997-08-25  Walk Right Up To The Sun - Digitally Remastered 1997
-  artists: ['Die Prinzen']
-    KEPT    2006        Alles nur geklaut - Live
-    DROPPED 2007-03-05  Alles nur geklaut - live
-  artists: ['William Verkler']
-    KEPT    2005-12-21  Home James
-    DROPPED 2006-01-01  HOME JAMES
-  artists: ['Bad Company']
-    KEPT    1975        Feel like Makin' Love - 2015 Remaster
-    DROPPED 2020-02-28  Feel Like Makin' Love
-  artists: ['Spandau Ballet']
-    KEPT    1983        True - 2003 Remaster
-    DROPPED 2019-08-23  True
-  artists: ['Chicago']
-    KEPT    2017-10-31  Baby What a Big Surprise - Remastered
-    DROPPED 2018-06-22  Baby What a Big Surprise
-  artists: ['The Replacements']
-    KEPT    1997        Jungle Rock
-    DROPPED 2020-10-09  Jungle Rock - 2020 Remaster
+    KEPT    2005-06-20  I Am The True Vine  ['Rev. Gary Davis']
+    DROPPED 2020-04-24  I Am the True Vine  ['Rev. Gary Davis']
+    KEPT    1961-10-20  Can't Help Falling in Love  ['Elvis Presley']
+    DROPPED 2007        Can't Help Falling In Love  ['Elvis Presley']
+    KEPT    1995-05-15  I Am the Resurrection  ['The Stone Roses']
+    DROPPED 2020-01-24  I Am The Resurrection  ['The Stone Roses']
+    KEPT    1969-06-17  Don't Cry Daddy  ['Elvis Presley']
+    DROPPED 2007        Don't Cry Daddy - Remastered  ['Elvis Presley']
+    KEPT    2004-06-22  Visit Me in Music City  ['Bobby Bare Jr.']
+    DROPPED 2015-07-31  Visit Me In Music City  ['Bobby Bare Jr.']
+    KEPT    1979-10-12  Sara - 2015 Remaster  ['Fleetwood Mac']
+    DROPPED 1988-11-21  Sara  ['Fleetwood Mac']
+    KEPT    2010-09-01  Be True To Yourself  ['SniperShot']
+    DROPPED 2011-09-25  Be True to Yourself  ['SniperShot']
+    KEPT    2010-10-30  Wanderlust In Keys  ['Arun Shenoy']
+    DROPPED 2012-08-30  Wanderlust in Keys  ['Arun Shenoy']
+    KEPT    1999-08-24  Take a Picture  ['Filter']
+    DROPPED 1999-08-24  Take A Picture  ['Filter']
+    KEPT    2002        Dusty from the Talk,  ['Richard Buckner']
+    DROPPED 2002-10-08  Dusty From the Talk,  ['Richard Buckner']
+    KEPT    2011-01-04  Easy By the Gun  ['Hearts of Oak']
+    DROPPED 2018-10-26  Easy by the Gun  ['Hearts of Oak']
+    KEPT    2003-02-25  Theme from Silk Road  ['Kitaro']
+    DROPPED 2006-11-07  Theme From Silk Road  ['Kitaro']
+    KEPT    1992-01-26  Theme from "Hatari"  ['Henry Mancini']
+    DROPPED 2000-09-14  Theme From "Hatari"  ['Henry Mancini']
+    KEPT    1998-04-28  El sombrero de 3 picos (The 3-Cornered Hat) (arr. for guitar): Dance Of The Miller  ['Anonymous', 'Manuel de Falla', 'Norbert Kraft']
+    DROPPED 2002-11-29  El sombrero de 3 picos (The 3-Cornered Hat) (arr. for guitar): Dance of the Miller  ['Anonymous', 'Manuel de Falla', 'Norbert Kraft']
+    KEPT    1981-06-01  Message of Love  ['Pretenders']
+    DROPPED 1981-08-07  Message of Love - 2006 Remaster  ['Pretenders']
+
+15 RANDOM PASS-2 MERGES (featuring stripped, primary artist)
+================================================================================
+    KEPT    2004-12-09  Om Mata  ['Tina Malia', 'Shimshai']
+    DROPPED 2005-09-03  Om Mata  ['Tina Malia']
+    KEPT    1993        Jesus Is Coming Soon  ['Blind Willie Johnson']
+    DROPPED 2013        Jesus Is Coming Soon  ['Blind Willie Johnson', 'Willie B. Richardson']
+    KEPT    2020-09-18  Verräter  ['Varg']
+    DROPPED 2020-09-18  Verräter (feat. Tetzel)  ['Varg', 'Tetzel']
+    KEPT    1986-01-01  Две звезды  ['Alla Pugacheva']
+    DROPPED 1997-04-15  Две звезды  ['Alla Pugacheva', 'Vladimir Kuzmin']
+    KEPT    2000-06-30  Going Home This Evening  ['Mac Martin']
+    DROPPED 2009-02-10  Going Home This Evening  ['Mac Martin', 'His Dixie Travelers']
+    KEPT    2018-06-29  Have Mercy  ['Megative', 'Pierre Kwenders']
+    DROPPED 2018-07-27  Have Mercy  ['Megative']
+    KEPT    2018-04-27  Hallucinogenics  ['Matt Maeson']
+    DROPPED 2020-09-25  Hallucinogenics (feat. Lana Del Rey)  ['Matt Maeson', 'Lana Del Rey']
+    KEPT    1968-08-12  Piece of My Heart  ['Big Brother & The Holding Company', 'Janis Joplin']
+    DROPPED 2001-10-16  Piece of My Heart  ['Big Brother & The Holding Company']
+    KEPT    2005-03-29  Guardian Angel  ['The Bellamy Brothers', 'Willie Nelson']
+    DROPPED 2012-09-04  Guardian Angel  ['The Bellamy Brothers']
+    KEPT    1957        Symphony No. 2 in E Minor, Op. 27: III. Adagio  ['Sergei Rachmaninoff', 'Philadelphia Orchestra', 'Eugene Ormandy']
+    DROPPED 1960        Symphony No. 2 in E Minor, Op. 27: III. Adagio  ['Sergei Rachmaninoff', 'Eugene Ormandy']
+    KEPT    2006-04-18  Preludes, Book 1: No. 12. Minstrels  ['Claude Debussy', 'François-Joël Thiollier']
+    DROPPED 2010-08-02  Preludes, Book 1: No. 12. Minstrels  ['Claude Debussy']
+    KEPT    2012-09-03  Cristofori's Dream  ['David Lanz']
+    DROPPED 2013-03-26  Cristofori's Dream  ['David Lanz', 'David']
+    KEPT    2006        Lost To A Stranger  ['Hylo Brown']
+    DROPPED 2007-01-16  Lost To A Stranger  ['Hylo Brown', 'The Timberliners']
+    KEPT    1928        Lord I Just Can't Keep From Crying  ['Blind Willie Johnson']
+    DROPPED 2013        Lord I Just Can't Keep from Crying  ['Blind Willie Johnson', 'Willie B. Richardson']
+    KEPT    2003-09-02  ?  ['MF DOOM', 'MF Grimm', 'Kurious']
+    DROPPED 2011-04-26  ?  ['MF DOOM', 'Kurious']

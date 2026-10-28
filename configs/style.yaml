@@ -1,0 +1,34 @@
+# Artist style embeddings (src/djlite/style.py).
+svd:
+  n_components: 64
+  random_seed: 42
+  n_iter: 7
+
+weighting:
+  # cell = (1 + log n_tracks) * log(n_artists / n_artists_on_album), rows L2-normalized.
+  # The idf term down-weights big multi-artist compilations.
+  sublinear_tf: true
+  # Albums with one artist link nobody; as unique columns they made rows near-orthogonal
+  # (64 components explained 2% of variance, 2.5% of tracks got a style vector).
+  drop_single_artist_albums: true
+
+# After SVD, average each artist's vector with its 1..h-hop artist->album->artist
+# neighbours (Z + WZ + W^2 Z). Fills in weakly connected artists from their neighbours.
+propagation_hops: 2
+
+# An artist's SVD projection norm (before smoothing) is the share of its unit row
+# vector captured by the components. Artists below this get a zero vector (0 = off).
+min_captured_norm: 0.0
+
+files:
+  artist_embeddings: artist_embeddings.parquet   # in paths.models_dir
+  track_style: track_style.parquet               # in paths.features_dir
+
+sanity:
+  top_n: 10
+  artists:
+    - {label: house,    name: Daft Punk}
+    - {label: pop,      name: Ed Sheeran}
+    - {label: rock,     name: Foo Fighters}
+    - {label: hip-hop,  name: The Notorious B.I.G.}
+    - {label: indian,   name: A.R. Rahman}

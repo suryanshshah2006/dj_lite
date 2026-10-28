@@ -1,0 +1,72 @@
+NEXT TRACKS, method=full  (alpha=0.5, beta=0.5, K=500, exclude_same_artist=True)
+REL = relevance (audio/style cosines mapped to [0,1], era); TRANS = transition v0.1 with its components; dE = energy B - A
+
+[HOUSE]
+SEED: Worship - Duke Dumont (2016)  camelot=10A tempo=126.0 energy=0.78
+   # track                                         cam    bpm   nrg  year  FINAL |   REL audio style   era | TRANS  harm tempo   nrg  timb  loud   era    dE
+   1 BOSS - Disclosure                             10A  126.0  0.76  2016  0.986 |  0.98  0.96  0.99  1.00 |  0.99  1.00  1.00  0.98  0.96  1.00  1.00 -0.02
+   2 Inside - Jovonn                               10A  125.0  0.81  2016  0.969 |  0.97  0.92  0.99  1.00 |  0.97  1.00  0.96  0.97  0.90  1.00  1.00 +0.03
+   3 In The Trees - Jerome Sydenham & Tiger St...  10A  127.0  0.91  2007  0.964 |  0.97  0.97  0.98  0.92 |  0.96  1.00  0.96  0.87  0.96  1.00  0.92 +0.13
+   4 Jumpstart - DJ Zinc, Shift K3Y                10A  127.0  0.83  2016  0.962 |  0.95  0.97  0.92  1.00 |  0.97  1.00  0.96  0.95  0.96  1.00  1.00 +0.05
+   5 Enjoy Music - Riva Starr Remix - Reboot       10A  127.0  0.85  2016  0.961 |  0.95  0.97  0.93  1.00 |  0.97  1.00  0.96  0.92  0.96  1.00  1.00 +0.08
+   6 High Times In Middle Management - Simian ...  10B  126.0  0.84  2007  0.961 |  0.97  0.97  0.98  0.92 |  0.95  0.90  1.00  0.94  0.97  1.00  0.92 +0.06
+   7 Shinjuku Ramen - Fred Everything              10A  125.0  0.86  2008  0.959 |  0.95  0.97  0.94  0.94 |  0.97  1.00  0.96  0.92  0.97  1.00  0.94 +0.08
+   8 Larry's Exotic Blend - Zappe                  10A  125.0  0.69  2017  0.957 |  0.95  0.92  0.97  1.00 |  0.96  1.00  0.96  0.91  0.89  1.00  1.00 -0.09
+   9 Search Is Over - Spirit Catcher               10A  125.0  0.73  2007  0.957 |  0.94  0.99  0.91  0.92 |  0.98  1.00  0.96  0.95  0.99  1.00  0.92 -0.05
+  10 Just Fabulous - Adnan Sharif Remix - Shin...  10A  125.0  0.93  2012  0.953 |  0.95  0.98  0.91  1.00 |  0.96  1.00  0.96  0.84  0.99  0.89  1.00 +0.16
+
+[POP]
+SEED: Shape of You - Ed Sheeran (2017)  camelot=12A tempo=96.0 energy=0.65
+   # track                                         cam    bpm   nrg  year  FINAL |   REL audio style   era | TRANS  harm tempo   nrg  timb  loud   era    dE
+   1 2002 - Anne-Marie                             12A   96.1  0.68  2018  0.954 |  0.94  0.88  0.96  1.00 |  0.97  1.00  1.00  0.97  0.83  1.00  1.00 +0.03
+   2 Good for You - Icona Pop                      12B   95.0  0.81  2012  0.952 |  0.98  0.98  0.98  1.00 |  0.92  0.90  0.93  0.84  0.98  1.00  1.00 +0.16
+   3 I Need A Dollar - Aloe Blacc                  11A   95.5  0.48  2010  0.947 |  0.97  0.95  0.98  0.96 |  0.93  0.90  0.98  0.83  0.96  0.87  0.96 -0.17
+   4 30 Rock - Pomplamoose                         12B   95.9  0.74  2015  0.944 |  0.94  0.94  0.92  1.00 |  0.95  0.90  1.00  0.91  0.93  0.98  1.00 +0.09
+   5 Don't Be a Stranger - Ward Thomas             12A   97.0  0.74  2020  0.937 |  0.94  0.88  0.96  1.00 |  0.94  1.00  0.92  0.91  0.83  1.00  1.00 +0.09
+   6 My Own - Kwabs                                12A   94.0  0.81  2016  0.937 |  0.97  0.96  0.98  1.00 |  0.90  1.00  0.76  0.84  0.98  1.00  1.00 +0.16
+   7 Kiss the Sky - Fitz and The Tantrums          12A   98.0  0.86  2019  0.932 |  0.97  0.96  0.98  1.00 |  0.89  1.00  0.75  0.79  0.96  1.00  1.00 +0.21
+   8 I'll Be Your Man - James Blunt                11A   97.0  0.90  2010  0.917 |  0.94  0.90  0.96  0.96 |  0.89  0.90  0.93  0.75  0.88  1.00  0.96 +0.25
+   9 What About Me - Isac Elliot                   11B   96.0  0.54  2016  0.916 |  0.98  0.96  0.98  1.00 |  0.86  0.60  1.00  0.89  0.95  1.00  1.00 -0.11
+  10 Reisen - Mia.                                 11A   98.0  0.58  2020  0.912 |  0.96  0.95  0.96  1.00 |  0.86  0.90  0.76  0.93  0.95  0.66  1.00 -0.07
+
+[ROCK]
+SEED: Everlong - Foo Fighters (1997)  camelot=10A tempo=158.1 energy=0.88
+   # track                                         cam    bpm   nrg  year  FINAL |   REL audio style   era | TRANS  harm tempo   nrg  timb  loud   era    dE
+   1 Iris - The Goo Goo Dolls                      10A  155.9  0.71  1998  0.953 |  0.97  0.97  0.96  1.00 |  0.94  1.00  0.89  0.83  0.96  1.00  1.00 -0.17
+   2 Day Of Freedom - Rachael Lampa                10B  156.1  0.78  2000  0.946 |  0.97  0.98  0.95  1.00 |  0.92  0.90  0.90  0.90  0.97  1.00  1.00 -0.10
+   3 Everything Goes - Natalie Imbruglia           10B  159.8  0.54  2001  0.933 |  0.97  0.95  0.98  1.00 |  0.89  0.90  0.92  0.66  0.99  1.00  1.00 -0.34
+   4 Fade Out - The Cringe                         10B  156.0  0.99  2007  0.928 |  0.95  0.98  0.94  0.90 |  0.91  0.90  0.90  0.89  0.95  1.00  0.90 +0.11
+   5 Echoes - Sunflower Dead                       10B  158.8  0.91  2012  0.923 |  0.90  0.99  0.87  0.80 |  0.95  0.90  0.99  0.97  0.97  1.00  0.80 +0.03
+   6 Ghosts - Nick Lachey                          10B  158.0  0.75  2006  0.920 |  0.94  0.93  0.95  0.92 |  0.90  0.90  1.00  0.87  0.72  1.00  0.92 -0.13
+   7 Halo - Beyoncé                                10A   80.0  0.72  2008  0.919 |  0.94  0.96  0.94  0.88 |  0.90  1.00  0.82  0.84  0.89  1.00  0.88 -0.16
+   8 Always In Love - Trey Lorenz                  10B  156.0  0.60  1992  0.911 |  0.95  0.93  0.95  1.00 |  0.87  0.90  0.89  0.72  0.90  0.80  1.00 -0.28
+   9 Errantes - Aterciopelados                     10B  154.9  0.82  1995  0.904 |  0.95  0.93  0.94  1.00 |  0.86  0.90  0.77  0.94  0.84  0.87  1.00 -0.06
+  10 Local Boys - The Verve Pipe                   11B  157.7  0.84  2001  0.902 |  0.94  0.95  0.91  1.00 |  0.86  0.60  1.00  0.96  0.94  1.00  1.00 -0.04
+
+[HIP-HOP]
+SEED: Juicy - The Notorious B.I.G. (2007)  camelot=11B tempo=97.4 energy=0.77
+   # track                                         cam    bpm   nrg  year  FINAL |   REL audio style   era | TRANS  harm tempo   nrg  timb  loud   era    dE
+   1 Quiet Storm (feat. Lil' Kim) - Remix - Mo...  11B   97.5  0.77  1999  0.981 |  0.98  0.97  1.00  0.94 |  0.98  1.00  1.00  1.00  0.97  0.82  0.94 +0.00
+   2 We Know (featuring Jermaine Dupri & Da Br...  11B   96.7  0.69  1998  0.966 |  0.97  0.97  0.99  0.92 |  0.96  1.00  0.97  0.92  0.97  0.90  0.92 -0.08
+   3 Hit It from the Back - Mobb Deep              11B   98.3  0.70  2006  0.962 |  0.95  0.97  0.93  1.00 |  0.97  1.00  0.95  0.94  0.97  0.99  1.00 -0.06
+   4 Flood The Block - Mobb Deep                   10B   97.5  0.83  2004  0.954 |  0.95  0.96  0.93  1.00 |  0.96  0.90  1.00  0.93  0.99  1.00  1.00 +0.07
+   5 Dr. Knockboot - Nas                           10B   96.1  0.73  1999  0.952 |  0.98  0.99  0.98  0.94 |  0.93  0.90  0.88  0.96  0.99  1.00  0.94 -0.04
+   6 Set It - Slum Village                         11B   95.9  0.87  2005  0.946 |  0.95  0.99  0.92  1.00 |  0.94  1.00  0.85  0.90  0.99  1.00  1.00 +0.10
+   7 You Know My Style - Nas                       10B   98.2  0.69  2004  0.945 |  0.96  0.91  0.98  1.00 |  0.93  0.90  0.96  0.92  0.94  0.83  1.00 -0.08
+   8 Ain't No Nigga - JAY-Z, Foxy Brown            11B   98.7  0.60  1996  0.943 |  0.96  0.97  0.98  0.88 |  0.92  1.00  0.91  0.83  0.98  0.69  0.88 -0.17
+   9 Quiet Storm - Mobb Deep                       10B   97.0  0.73  1999  0.941 |  0.94  0.96  0.93  0.94 |  0.94  0.90  0.99  0.96  0.97  0.73  0.94 -0.04
+  10 Qu'est-ce qu'on attend - IV My People Rem...  11A   96.3  0.88  2001  0.940 |  0.96  0.96  0.95  0.98 |  0.92  0.90  0.92  0.88  0.98  1.00  0.98 +0.12
+
+[ACOUSTIC]
+SEED: Fast Car - Tracy Chapman (1988)  camelot=9A tempo=104.0 energy=0.29
+   # track                                         cam    bpm   nrg  year  FINAL |   REL audio style   era | TRANS  harm tempo   nrg  timb  loud   era    dE
+   1 Flown This Acid World - Peter Himmelman        8B  104.7  0.29  1992  0.911 |  0.96  0.94  0.95  1.00 |  0.87  0.60  0.97  1.00  0.99  0.94  1.00 +0.00
+   2 Afraid of the Dark - Jon Randall               9B  103.9  0.41  1998  0.905 |  0.89  0.88  0.90  0.90 |  0.92  0.90  1.00  0.88  0.91  0.70  0.90 +0.12
+   3 The Last Gunfighter Ballad - Guy Clark         9B  104.7  0.09  1997  0.899 |  0.90  0.84  0.94  0.92 |  0.89  0.90  0.97  0.80  0.78  1.00  0.92 -0.20
+   4 Pound It On Down - Greg Brown                  9A  105.2  0.33  2006  0.892 |  0.85  0.90  0.85  0.74 |  0.93  1.00  0.91  0.97  0.90  0.86  0.74 +0.03
+   5 Always Late (With Your Kisses) - Willie N...   9B  103.5  0.36  1977  0.892 |  0.87  0.83  0.89  0.88 |  0.92  0.90  0.99  0.93  0.82  0.87  0.88 +0.07
+   6 Evita's Lullaby - Alejandro Escovedo           9B  103.1  0.23  2008  0.874 |  0.84  0.89  0.85  0.70 |  0.91  0.90  0.96  0.93  0.83  1.00  0.70 -0.07
+   7 Don't Tell Me - Zoe Boekbinder                10A  104.0  0.43  2011  0.871 |  0.84  0.92  0.84  0.64 |  0.91  0.90  1.00  0.86  0.99  0.52  0.64 +0.14
+   8 Mirror - Zoe Boekbinder                        9A  103.6  0.50  2018  0.865 |  0.81  0.90  0.84  0.50 |  0.92  1.00  0.99  0.79  0.96  0.71  0.50 +0.21
+   9 Champagne Melody - Andy Fairweather-Low        9A  102.2  0.30  2008  0.864 |  0.85  0.80  0.93  0.70 |  0.88  1.00  0.83  0.99  0.78  0.59  0.70 +0.01
+  10 Sunlight Girl - Ian Tamblyn                    9B  102.0  0.33  2004  0.862 |  0.86  0.90  0.85  0.78 |  0.87  0.90  0.79  0.97  0.89  0.92  0.78 +0.03

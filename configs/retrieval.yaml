@@ -1,0 +1,30 @@
+# Candidate retrieval + relevance (src/djlite/retrieval.py).
+relevance:
+  # relevance = w_audio * audio_sim + w_style * style_sim + w_era * era_score
+  # Cosines are mapped to [0, 1] via (cos + 1) / 2 so relevance lives on the same
+  # scale as the transition score. era_score uses the `era` section of transitions.yaml.
+  w_audio: 0.35
+  w_style: 0.50
+  w_era: 0.15
+  audio_columns:     # standardized (_z) columns used for audio cosine similarity
+    - danceability
+    - energy
+    - loudness
+    - speechiness
+    - acousticness
+    - instrumentalness
+    - liveness
+    - valence
+    - tempo_folded
+
+retrieval:
+  k: 500                 # FAISS candidates per seed before exact re-ranking
+  exclude_same_artist: true   # drop candidates sharing any artist with the seed
+
+ranking:
+  alpha: 0.5             # weight on relevance
+  beta: 0.5              # weight on transition_score_v0_1
+  transition_version: v0_1
+
+sanity:
+  top_n: 10

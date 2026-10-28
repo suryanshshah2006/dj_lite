@@ -1,5 +1,7 @@
 paths:
   raw_csv: data/raw/tracks_features.csv
+  # Kaggle "Spotify Tracks Dataset" (track_genre). EVALUATION ONLY - never a model input.
+  genre_csv: data/raw/dataset.csv
   processed_dir: data/processed
   features_dir: data/features
   models_dir: models

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from djlite.clean import fold_tempo, normalize_name
+from djlite.clean import fold_tempo, normalize_name, strip_featuring
 
 
 # ---------- fold_tempo ----------
@@ -90,3 +90,35 @@ def test_normalize_name_keeps_other_tags(raw):
 
 def test_live_and_studio_stay_distinct():
     assert normalize_name("Song - Live") != normalize_name("Song - Remastered")
+
+
+# ---------- strip_featuring ----------
+
+@pytest.mark.parametrize("raw, expected", [
+    ("call me will (feat. nuri olsen)", "call me will"),
+    ("song [feat. chris jones]", "song"),
+    ("song (ft. x & y)", "song"),
+    ("song (featuring kwame toure)", "song"),
+    ("song feat. mark da shark", "song"),
+    ("say yeah - feat. blaze burna", "say yeah"),
+    ("holla like u know me ft. que diesel", "holla like u know me"),
+    ("reachin' featuring macklemore and sol", "reachin'"),
+    ("song (live) [feat. chris jones]", "song (live)"),
+    ("song feat. x - radio edit", "song - radio edit"),
+    ("song feat. x (club mix)", "song (club mix)"),
+    ("song (feat. x) - remix", "song - remix"),
+])
+def test_strip_featuring(raw, expected):
+    assert strip_featuring(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "a great feat",
+    "feat of strength",
+    "left ft right",
+    "featuring",
+    "song (with teddy wilson)",
+    "song - remix",
+])
+def test_strip_featuring_leaves_other_names(raw):
+    assert strip_featuring(raw) == raw

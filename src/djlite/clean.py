@@ -48,6 +48,35 @@ def normalize_name(name: str) -> str:
     return s.strip()
 
 
+_FEAT_WORD = r"(?:feat\.?|ft\.|featuring)"
+_FEAT_PATTERNS = [
+    # "(feat. X)", "[ft. X]", "(featuring X)" anywhere
+    re.compile(r"\s*[(\[]\s*" + _FEAT_WORD + r"\s+[^)\]]*[)\]]"),
+    # "Song feat. X", "Song - ft. X": up to the next " - " tag, bracket, or end.
+    # Bare "feat" without a dot is not matched outside brackets ("a great feat").
+    re.compile(r"\s+(?:-\s+)?(?:feat\.|ft\.|featuring)\s+[^()\[\]]*?(?=\s+-\s+|\s*[(\[]|$)"),
+]
+
+
+def strip_featuring(name: str) -> str:
+    """Remove featured-artist tags from an already-normalized (lowercase) name."""
+    s = name
+    for pat in _FEAT_PATTERNS:
+        s = pat.sub("", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _dedup(df: pd.DataFrame, key_cols: list[str]) -> pd.DataFrame:
+    """Rows to drop when grouping by key_cols and keeping the earliest release."""
+    order = df.sort_values(key_cols + ["release_date", "id"])
+    kept_id = order.groupby(key_cols, sort=False)["id"].transform("first")
+    is_dup = order["id"] != kept_id
+    return pd.DataFrame({
+        "dropped_id": order.loc[is_dup, "id"].to_numpy(),
+        "kept_id": kept_id[is_dup].to_numpy(),
+    })
+
+
 def fold_tempo(tempo, low: float = 80.0, high: float = 160.0):
     """Halve or double tempo until it lies in [low, high). Requires high == 2 * low.
 
@@ -155,17 +184,35 @@ def clean(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, pd.DataFrame, list
     # 10. Deduplicate on (normalized name, sorted artists), keep earliest release
     df["name_norm"] = df["name"].map(normalize_name)
     artist_key = df["artists"].map(lambda a: "\x1f".join(sorted(a)))
-    order = (
-        df.assign(_artist_key=artist_key)
-        .sort_values(["name_norm", "_artist_key", "release_date", "id"])
-    )
-    kept_id = order.groupby(["name_norm", "_artist_key"], sort=False)["id"].transform("first")
-    is_dup = order["id"] != kept_id
-    dedup_map = pd.DataFrame({
-        "dropped_id": order.loc[is_dup, "id"].to_numpy(),
-        "kept_id": kept_id[is_dup].to_numpy(),
-    })
+    dedup_map = _dedup(df.assign(_artist_key=artist_key), ["name_norm", "_artist_key"])
+    dedup_map["pass"] = 1
     drop(df["id"].isin(dedup_map["dropped_id"]), "duplicate song (name_norm + artists)")
+
+    # 11. Dedup pass 2: strip featured artists, group on primary artist
+    p2 = cfg["dedup_pass2"]
+    if p2["enabled"]:
+        df["name_norm"] = df["name_norm"].map(strip_featuring)
+        primary = df["artists"].map(lambda a: a[0] if len(a) else "")
+        m2 = _dedup(df.assign(_primary=primary), ["name_norm", "_primary"])
+        m2["pass"] = 2
+        if p2["require_artist_subset"]:
+            # Composer-first classical credits: same piece + composer but different
+            # performers is a different recording, not a duplicate.
+            sets = df.set_index("id")["artists"].map(frozenset)
+            a, b = sets.loc[m2["dropped_id"]].to_numpy(), sets.loc[m2["kept_id"]].to_numpy()
+            ok = np.array([x <= y or y <= x for x, y in zip(a, b)])
+            note("pass-2 candidate merges rejected (artist sets not nested)", int((~ok).sum()))
+            m2 = m2[ok].reset_index(drop=True)
+        # Re-point pass-1 entries whose kept track was itself dropped in pass 2.
+        final = dict(zip(m2["dropped_id"], m2["kept_id"]))
+        dedup_map["kept_id"] = dedup_map["kept_id"].map(lambda k: final.get(k, k))
+        dur = df.set_index("id")["duration_ms"]
+        gap_s = (dur.loc[m2["dropped_id"]].to_numpy() - dur.loc[m2["kept_id"]].to_numpy()) / 1000
+        n_far = int((np.abs(gap_s) > p2["report_duration_gap_s"]).sum())
+        dedup_map = pd.concat([dedup_map, m2], ignore_index=True)
+        drop(df["id"].isin(m2["dropped_id"]), "duplicate song pass 2 (no feat. + primary artist)")
+        note(f"pass-2 merges with |duration gap| > {p2['report_duration_gap_s']} s "
+             "(possible distinct songs)", n_far)
 
     log.append(f"{'Final rows':<58} {len(df):>10,}   "
                f"({len(df) / n_start:.1%} of input, {n_start - len(df):,} removed)")
@@ -186,10 +233,32 @@ def dedup_examples(raw: pd.DataFrame, dedup_map: pd.DataFrame, n: int, seed: int
     sample = pairs.sample(min(n, len(pairs)), random_state=seed)
     lines = []
     for _, r in sample.iterrows():
-        lines.append(f"  artists: {r['kept_artists']}")
-        lines.append(f"    KEPT    {r['kept_release_date']:<10}  {r['kept_name']}")
-        lines.append(f"    DROPPED {r['dropped_release_date']:<10}  {r['dropped_name']}")
+        lines.append(f"    KEPT    {r['kept_release_date']:<10}  {r['kept_name']}  "
+                     f"{r['kept_artists']}")
+        lines.append(f"    DROPPED {r['dropped_release_date']:<10}  {r['dropped_name']}  "
+                     f"{r['dropped_artists']}")
     return "\n".join(lines)
+
+
+def artist_album_links(raw: pd.DataFrame) -> pd.DataFrame:
+    """One row per (artist_id, album_id) with track counts, from ALL raw rows.
+
+    Uses the unfiltered data on purpose: compilation and re-release appearances
+    (removed by dedup) are exactly the links that connect artists for style.py.
+    """
+    ids = raw["artist_ids"].map(parse_list)
+    names = raw["artists"].map(parse_list)
+    long = pd.DataFrame({"album_id": raw["album_id"], "artist_id": ids, "artist": names})
+    # Names only line up with ids when the lists have equal length.
+    long["artist"] = [n if len(n) == len(i) else [None] * len(i)
+                      for n, i in zip(long["artist"], long["artist_id"])]
+    long = long.explode(["artist_id", "artist"]).dropna(subset=["artist_id"])
+    links = (long.groupby(["artist_id", "album_id"], sort=False)
+             .size().rename("n_tracks").reset_index())
+    artist_names = (long.dropna(subset=["artist"]).groupby("artist_id")["artist"]
+                    .agg(lambda s: s.mode().iat[0]))
+    links["artist"] = links["artist_id"].map(artist_names)
+    return links
 
 
 def main() -> None:
@@ -211,24 +280,34 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_dir / "tracks_clean.parquet", index=False)
     dedup_map.to_parquet(out_dir / "dedup_map.parquet", index=False)
+    links = artist_album_links(raw)
+    links.to_parquet(out_dir / "artist_album_links.parquet", index=False)
 
     rep = cfg["report"]
-    n_groups = dedup_map["kept_id"].nunique()
+    n, rs = rep["n_dedup_examples"], rep["random_seed"]
+    m1, m2 = dedup_map[dedup_map["pass"] == 1], dedup_map[dedup_map["pass"] == 2]
     report = "\n".join([
         "CLEANING REPORT (rules applied in order)",
         "=" * 80,
         *log,
         "",
-        f"Deduplication: {len(dedup_map):,} rows merged into {n_groups:,} kept songs.",
+        f"Deduplication: pass 1 merged {len(m1):,} rows, pass 2 merged {len(m2):,} more; "
+        f"{dedup_map['kept_id'].nunique():,} kept songs absorb duplicates.",
+        f"Artist-album links (from all raw rows): {len(links):,} "
+        f"({links['artist_id'].nunique():,} artists, {links['album_id'].nunique():,} albums)",
         f"Columns: {list(df.columns)}",
         "",
-        f"{rep['n_dedup_examples']} RANDOM DEDUP MERGES",
+        f"{n} RANDOM PASS-1 MERGES",
         "=" * 80,
-        dedup_examples(raw, dedup_map, rep["n_dedup_examples"], rep["random_seed"], False),
+        dedup_examples(raw, m1, n, rs, False),
         "",
-        f"{rep['n_dedup_examples']} RANDOM DEDUP MERGES WHERE THE RAW NAMES DIFFER",
+        f"{n} RANDOM PASS-1 MERGES WHERE THE RAW NAMES DIFFER",
         "=" * 80,
-        dedup_examples(raw, dedup_map, rep["n_dedup_examples"], rep["random_seed"], True),
+        dedup_examples(raw, m1, n, rs, True),
+        "",
+        f"{n} RANDOM PASS-2 MERGES (featuring stripped, primary artist)",
+        "=" * 80,
+        dedup_examples(raw, m2, n, rs, False),
         "",
     ])
     report_path = PROJECT_ROOT / paths["reports_dir"] / "cleaning_report.txt"
@@ -238,6 +317,7 @@ def main() -> None:
     print(report)
     print(f"Wrote {out_dir / 'tracks_clean.parquet'}")
     print(f"Wrote {out_dir / 'dedup_map.parquet'}")
+    print(f"Wrote {out_dir / 'artist_album_links.parquet'}")
     print(f"Wrote {report_path}")
 
 

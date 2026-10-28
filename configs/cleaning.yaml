@@ -24,3 +24,10 @@ liveness:
 report:
   n_dedup_examples: 15
   random_seed: 42
+
+dedup_pass2:
+  enabled: true          # strip feat./ft./featuring, then dedup on name + primary artist
+  # Only merge when one artist set contains the other (A vs A + feat. X). Without this,
+  # composer-first classical credits merge different performers' recordings.
+  require_artist_subset: true
+  report_duration_gap_s: 30   # diagnostic only: count merges whose durations differ more

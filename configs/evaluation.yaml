@@ -1,0 +1,18 @@
+# Evaluation (src/djlite/evaluate.py). Genre labels are used ONLY here, never as input.
+genre:
+  id_column: track_id
+  genre_column: track_genre
+
+n_seed_tracks: 1000            # random genre-labeled seed tracks per run
+sampling_seeds: [0, 1, 2, 3, 4]   # one run per seed; report mean +- std over runs
+top_n: 10
+
+# Pools to evaluate in. "full": candidates are the whole cleaned dataset (as specified).
+# "labeled": candidates restricted to genre-labeled tracks, so every result has a label.
+pools: [full, labeled]
+
+methods:
+  transition: "(a) transition score only (v0.1)"
+  audio: "(b) audio similarity only"
+  relevance: "(c) audio + style relevance"
+  full: "(d) alpha*relevance + beta*transition"

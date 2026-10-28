@@ -9,7 +9,9 @@ weights:                 # normalized by their sum, so the score stays in [0, 1]
   era: 0.05
 
 harmonic:
-  compatible: 1.0        # same code, +-1 same letter, or same number other letter
+  same: 1.0              # identical code
+  adjacent: 1.0          # +-1 number, same letter
+  relative: 1.0          # same number, other letter (relative major/minor)
   diagonal: 0.6          # +-1 number with a letter switch
   two_step: 0.3          # +-2 number, same letter
   other: 0.0
@@ -32,6 +34,23 @@ era:
   full_years: 5          # 1.0 within this gap
   floor_years: 30        # reaches min_score at this gap and beyond
   min_score: 0.5
+
+# v0.1 overrides harmonic and tempo; weights, loudness, timbre, and era are shared with v0.
+v0_1:
+  harmonic:
+    same: 1.0
+    adjacent: 0.9
+    relative: 0.9
+    diagonal: 0.6
+    two_step: 0.3
+    other: 0.0
+    null_key: 0.5
+  tempo:
+    # Uses raw tempo, octave-aligned (B is halved/doubled to the nearest power-of-2
+    # multiple of A). Score = exp(-(pct/sigma)^2), times octave_penalty if B had
+    # to be halved/doubled (i.e. a half- or double-time match).
+    sigma: 0.04
+    octave_penalty: 0.9
 
 sanity:
   random_pairs: 100000

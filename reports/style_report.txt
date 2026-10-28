@@ -1,0 +1,87 @@
+ARTIST STYLE EMBEDDINGS
+================================================================================
+links=309,774  artists=140,449  albums=118,382
+SVD: 64 components, explained variance ratio (sum) = 0.026
+
+COVERAGE
+  all artists: 140,449
+    share >=1 album with another artist (linked): 78.4%  (110,144)
+    no links -> zero embedding:                  21.6%  (30,305)
+    linked but captured_norm < 0.0 -> zero:   0.0%  (0)
+    usable embedding:                             78.4%  (110,144)
+  artists in cleaned tracks: 138,316
+    share >=1 album with another artist (linked): 78.2%  (108,167)
+    no links -> zero embedding:                  21.8%  (30,149)
+    linked but captured_norm < 0.0 -> zero:   0.0%  (0)
+    usable embedding:                             78.2%  (108,167)
+  captured_norm quantiles (linked artists, before smoothing): p10=0.0000  p25=0.0000  p50=0.0002  p75=0.0023  p90=0.0220
+  cosine of random usable-artist pairs: mean=0.028 p50=0.010 p90=0.255 p99=0.646
+
+  tracks with a non-zero style vector: 61.5% (670,751 of 1,089,816)
+
+NEAREST 10 ARTISTS BY STYLE (cosine)
+
+[HOUSE]
+  Daft Punk  (tracks=16, albums=4, linked=True, captured_norm=0.006)
+    0.947  Son Of Raw  (tracks=2)
+    0.927  Catz 'n Dogz  (tracks=3)
+    0.925  Chris Fortier  (tracks=16)
+    0.888  Jem Cooke  (tracks=5)
+    0.874  Soul Of Man  (tracks=4)
+    0.873  Lauren Lo Sung  (tracks=1)
+    0.873  Tim Weeks  (tracks=1)
+    0.873  Sahar Z  (tracks=1)
+    0.873  Kled Baken  (tracks=1)
+    0.873  James Dexter  (tracks=1)
+
+[POP]
+  Ed Sheeran  (tracks=89, albums=35, linked=True, captured_norm=0.001)
+    0.994  gnash  (tracks=19)
+    0.989  Captain Cuts  (tracks=3)
+    0.988  Anna Clendening  (tracks=2)
+    0.988  Griff Clawson  (tracks=2)
+    0.988  Ashworth  (tracks=2)
+    0.987  Olivia Noelle  (tracks=2)
+    0.987  Younotus  (tracks=12)
+    0.987  Bruno Martini  (tracks=1)
+    0.987  Tobu  (tracks=1)
+    0.987  Alesso  (tracks=5)
+
+[ROCK]
+  Foo Fighters  (tracks=161, albums=21, linked=True, captured_norm=0.001)
+    0.950  Natalie Imbruglia  (tracks=64)
+    0.944  Alien Ant Farm  (tracks=3)
+    0.942  The Union Square 5  (tracks=1)
+    0.941  LEN  (tracks=13)
+    0.940  311  (tracks=114)
+    0.939  Primitive Radio Gods  (tracks=11)
+    0.935  The Offspring  (tracks=8)
+    0.934  Trapt  (tracks=16)
+    0.932  Dave Matthews Band  (tracks=219)
+    0.932  Godsmack  (tracks=1)
+
+[HIP-HOP]
+  The Notorious B.I.G.  (tracks=107, albums=22, linked=True, captured_norm=0.001)
+    0.978  DMX  (tracks=29)
+    0.968  Nas  (tracks=219)
+    0.966  T-Boz  (tracks=3)
+    0.957  Jermaine Dupri  (tracks=55)
+    0.956  Capone-N-Noreaga  (tracks=2)
+    0.955  Malverde  (tracks=1)
+    0.955  Babydoll Refresh  (tracks=2)
+    0.955  Trace Midas  (tracks=1)
+    0.955  Emily  (tracks=13)
+    0.955  Keon Bryce  (tracks=2)
+
+[INDIAN]
+  A.R. Rahman  (tracks=45, albums=10, linked=True, captured_norm=0.068)
+    1.000  DJ Rishabh  (tracks=1)
+    1.000  Salim–Sulaiman  (tracks=3)
+    1.000  Amit Trivedi  (tracks=3)
+    1.000  Sadhana Sargam  (tracks=1)
+    1.000  Matt Dunkley  (tracks=15)
+    1.000  Czech Film Orchestra  (tracks=15)
+    1.000  Mehboob  (tracks=2)
+    1.000  Noel James  (tracks=1)
+    1.000  Anupama  (tracks=1)
+    1.000  Carolene  (tracks=1)
