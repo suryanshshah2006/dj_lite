@@ -1,0 +1,26 @@
+# Thresholds for src/djlite/clean.py (pipeline step 1).
+tempo:
+  min_bpm: 30            # drop tempo below this (tempo == 0 is dropped separately)
+  fold_low: 80           # tempo_folded is halved/doubled into [fold_low, fold_high)
+  fold_high: 160         # must equal 2 * fold_low
+
+duration:
+  min_s: 60
+  max_s: 900             # 15 minutes
+
+year:
+  min_valid: 1900        # recovered years outside [min_valid, max_valid] count as failures
+  max_valid: 2021
+
+speechiness:
+  max: 0.66              # above this is mostly spoken word
+
+loudness:
+  max_db: 0.0            # clip above this
+
+liveness:
+  live_threshold: 0.8    # is_live = liveness > this
+
+report:
+  n_dedup_examples: 15
+  random_seed: 42
