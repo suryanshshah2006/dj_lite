@@ -1,0 +1,31 @@
+# DJ-Lite web backend settings (the djlite pipeline configs in configs/ are read, not changed).
+cors_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+search:
+  limit: 20
+
+next:
+  default_n: 10
+  default_alpha: 0.5
+  max_n: 50
+
+mix:
+  generator: greedy_v0
+  default_length: 12
+  max_length: 40
+  default_alpha: 0.5
+  arc_weight: 0.5          # weight on arc fit = 1 - |energy - target|
+  k: 300                   # FAISS candidates per query (current track and each seed)
+  max_per_artist: 1        # an artist appears at most this often in a mix
+
+covers:
+  db_path: app/backend/cache/covers.sqlite   # relative to the project root
+  requests_per_second: 5
+  timeout_s: 6
+  failure_ttl_hours: 24    # transient failures (network/5xx) are retried after this
+  # "not found" (4xx / no thumbnail) is cached permanently
+
+reports:
+  eval_csv_v2: reports/eval_v2.csv
+  eval_csv_v1: reports/eval_step3.csv
+  figures_dir: reports/figures
