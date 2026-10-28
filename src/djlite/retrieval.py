@@ -19,11 +19,13 @@ import pandas as pd
 import yaml
 
 from djlite.style import l2_normalize
-from djlite.transitions import COMPONENTS, SCORERS, era_score
+from djlite.transitions import (
+    COMPONENTS, SCORERS, energy_smoothness, era_score, harmonic_score, loudness_score
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-METHODS = ("transition", "audio", "relevance", "full")
+METHODS = ("transition", "audio", "relevance", "full", "random")
 
 
 def load_configs(paths_file: Path | None = None) -> tuple[dict, dict, dict]:
@@ -73,6 +75,20 @@ class Recommender:
         }
         self.artist_sets = [frozenset(a) for a in t["artist_ids"]]
         self.id_to_idx = pd.Series(np.arange(len(t)), index=t["id"])
+
+        # Fast-path precomputation for transition_all (full-pool scans).
+        num, letter = self.arr["camelot_num"], self.arr["camelot_letter"]
+        code = np.where(np.isnan(num), 24, (np.nan_to_num(num) - 1) * 2
+                        + (letter == "B")).astype(np.intp)
+        self._camelot_code = code
+        nums = [float(k // 2 + 1) for k in range(24)] + [np.nan]
+        lets = ["B" if k % 2 else "A" for k in range(24)] + [None]
+        h = tcfg["v0_1"]["harmonic"]
+        self._harm_table = np.array([[harmonic_score(nums[p], lets[p], nums[q], lets[q], **h)
+                                      for q in range(25)] for p in range(25)])
+        timb = np.column_stack([self.arr[c + z_suffix] for c in tcfg["timbre"]["columns"]])
+        self._timbre_unit = l2_normalize(timb)
+        self._log2_tempo = np.log2(self.arr["tempo"])
 
     # ---------- pieces ----------
 
@@ -136,14 +152,29 @@ class Recommender:
         return self.rank_lists(i, method, n, cand, caps=(cap,))[cap]
 
     def rank_lists(self, i: int, method: str, n: int, cand: np.ndarray | None = None,
-                   caps: tuple = (None,)) -> dict:
+                   caps: tuple = (None,), rng: np.random.Generator | None = None) -> dict:
         """Score candidates once; return {cap: top-n DataFrame} for each max_per_artist cap
         (None = uncapped). Lets evaluation get capped and uncapped lists in one pass."""
+        cand, parts = self.score(i, method, cand, rng)
+        if method == "random":
+            key = rng.permutation(len(cand)).astype(float)  # random order
+        else:
+            key = parts[{"transition": "transition", "audio": "audio_sim",
+                         "relevance": "relevance", "full": "final"}[method]]
+        return self.select(cand, parts, key, n, caps)
+
+    def score(self, i: int, method: str, cand: np.ndarray | None = None,
+              rng: np.random.Generator | None = None) -> tuple[np.ndarray, dict]:
+        """Candidate set for `method` (seed and same-artist tracks removed) and every
+        score component for those candidates."""
         if method == "transition":
             # Full scan over the pool; keep a margin for exclusions.
-            s = self.transition(i, np.arange(len(self.tracks)))["score"]
+            s = self.transition_all(i)
             margin = min(300, len(s) - 1)
             cand = np.argpartition(-s, margin)[:margin]
+        elif method == "random":
+            size = min(self.rcfg["ranking"].get("random_draw", 200), len(self.tracks))
+            cand = rng.choice(len(self.tracks), size=size, replace=False)
         elif cand is None:
             cand = self.retrieve(np.array([i]), audio_only=(method == "audio"))[0]
         cand = cand[cand >= 0]
@@ -153,9 +184,12 @@ class Recommender:
         parts["transition"] = parts.pop("score")
         a, b = self.rcfg["ranking"]["alpha"], self.rcfg["ranking"]["beta"]
         parts["final"] = a * parts["relevance"] + b * parts["transition"]
-        key = {"transition": "transition", "audio": "audio_sim",
-               "relevance": "relevance", "full": "final"}[method]
-        order = np.argsort(-parts[key], kind="stable")
+        return cand, parts
+
+    def select(self, cand: np.ndarray, parts: dict, key: np.ndarray, n: int,
+               caps: tuple = (None,)) -> dict:
+        """{cap: top-n DataFrame} ordering candidates by `key` (descending)."""
+        order = np.argsort(-np.asarray(key), kind="stable")
         lists = {}
         for cap in caps:
             top = self._diversify(cand, order, n, cap)
@@ -163,6 +197,31 @@ class Recommender:
             out.insert(0, "idx", cand[top])
             lists[cap] = out
         return lists
+
+    def transition_all(self, i: int) -> np.ndarray:
+        """Transition score from seed i to every track in the pool.
+
+        Exact fast path for v0_1 (harmonic via lookup table, precomputed unit timbre
+        vectors, no per-call array copies); falls back to the generic scorer otherwise.
+        """
+        if self.rcfg["ranking"]["transition_version"] != "v0_1":
+            return self.transition(i, np.arange(len(self.tracks)))["score"]
+        t, a = self.tcfg, self.arr
+        harm = self._harm_table[self._camelot_code[i]][self._camelot_code]
+        # = tempo_score_v0_1(a["tempo"][i], a["tempo"]) with log2(tempo) precomputed
+        tv = t["v0_1"]["tempo"]
+        k = np.rint(self._log2_tempo - self._log2_tempo[i])
+        b2 = np.ldexp(a["tempo"], -k.astype(np.int64))
+        pct = np.abs(a["tempo"][i] - b2) / np.minimum(a["tempo"][i], b2)
+        tempo = np.exp(-((pct / tv["sigma"]) ** 2)) * np.where(k != 0, tv["octave_penalty"], 1.0)
+        nrg = energy_smoothness(a["energy"][i], a["energy"])
+        timb = np.clip((self._timbre_unit @ self._timbre_unit[i] + 1.0) / 2.0, 0.0, 1.0)
+        loud = loudness_score(a["loudness"][i], a["loudness"], **t["loudness"])
+        era = era_score(a["year"][i], a["year"], **t["era"])
+        w = t["weights"]
+        total = sum(w[k] for k in COMPONENTS)
+        return (w["harmonic"] * harm + w["tempo"] * tempo + w["energy_smoothness"] * nrg
+                + w["timbre"] * timb + w["loudness"] * loud + w["era"] * era) / total
 
     def _diversify(self, cand: np.ndarray, order: np.ndarray, n: int,
                    cap: int | None) -> np.ndarray:

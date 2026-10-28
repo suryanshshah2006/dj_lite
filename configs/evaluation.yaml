@@ -1,4 +1,8 @@
 # Evaluation (src/djlite/evaluate.py). Genre labels are used ONLY here, never as input.
+# v1: ID-matched labels, n_seed_tracks random seeds x sampling_seeds, mean +- std (Step 3).
+# v2: ID + name matching, every labeled seed once, bootstrap CIs, random baseline,
+#     macro genre agreement, alpha sweep. Settings under `v2:` below.
+version: v2
 genre:
   id_column: track_id
   genre_column: track_genre
@@ -17,3 +21,21 @@ methods:
   audio: "(b) audio similarity only"
   relevance: "(c) audio + style relevance"
   full: "(d) alpha*relevance + beta*transition"
+  random: "(r) random (artist-capped)"
+
+# ---------- v1 settings above (n_seed_tracks, sampling_seeds, pools) ----------
+
+v2:
+  pools: [labeled, full]       # first = primary
+  name_matching:
+    enabled: true              # also match on normalized name + primary artist
+    skip_ambiguous: true       # skip keys that map to >1 cleaned track
+    max_duration_gap_s: null   # optional guard against false matches (null = off)
+    n_examples: 20
+    random_seed: 0
+  bootstrap:
+    n_resamples: 1000
+    ci: 0.95
+    random_seed: 0
+  random_baseline_seed: 0      # method (r): rng = default_rng(seed + seed_track_index)
+  alpha_sweep: [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0]   # method (d), beta = 1 - alpha

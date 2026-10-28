@@ -32,6 +32,7 @@ ranking:
   # Greedy diversity: a candidate is skipped once any of its artists already has this
   # many tracks in the top-n list (null/0 = off). Applies to every method.
   max_per_artist: 1
+  random_draw: 200       # method "random": tracks drawn from the pool before exclusions/cap
 
 sanity:
   top_n: 10

@@ -142,3 +142,31 @@ def test_faiss_retrieval_matches_exact_scores(setup):
     cand = rec.retrieve(np.array([i]), k=20)[0]
     exact = rel["w_audio"] * (rec.audio @ rec.audio[i]) + rel["w_style"] * (rec.style @ rec.style[i])
     assert set(cand) == set(np.argsort(-exact)[:20])
+
+
+def test_transition_all_matches_generic_scorer(setup):
+    rec, df, *_ = setup
+    for i in (0, 3, 11, 150):  # includes an unknown-key-free and style-less seed
+        fast = rec.transition_all(i)
+        slow = transition_score_v0_1(df.iloc[i], df, rec.tcfg)["score"]
+        assert np.allclose(fast, slow, atol=1e-12)
+
+
+def test_transition_all_null_key(setup):
+    rec, df, *_ = setup
+    df2 = df.copy()
+    df2.loc[5, ["camelot_num", "camelot_letter", "camelot"]] = pd.NA
+    rec2 = Recommender(df2, rec.style, rec.rcfg, rec.tcfg)
+    for i in (5, 6):
+        slow = transition_score_v0_1(df2.iloc[i], df2, rec.tcfg)["score"]
+        assert np.allclose(rec2.transition_all(i), slow, atol=1e-12)
+
+
+def test_random_method_capped_and_reproducible(setup):
+    rec, df, *_ = setup
+    a = rec.rank_lists(11, "random", 10, caps=(1,), rng=np.random.default_rng(7))[1]
+    b = rec.rank_lists(11, "random", 10, caps=(1,), rng=np.random.default_rng(7))[1]
+    assert a["idx"].tolist() == b["idx"].tolist()
+    artists = [df["artist_ids"].iat[j][0] for j in a["idx"]]
+    assert len(a) == 10 and len(set(artists)) == 10
+    assert df["artist_ids"].iat[11][0] not in artists
