@@ -1,0 +1,30 @@
+GENRE EVALUATION
+====================================================================================================
+genre dataset: 89,741 unique track IDs, 114 genres, 18.2% of IDs carry >1 genre
+  match raw tracks_features.csv by ID:   4,729
+  match cleaned data by ID:              4,142
+  match a dropped duplicate (dedup map): 506 (not used)
+  cleaned tracks with a genre label: 4,142 (0.38% of 1,089,816)
+  [labeled pool, sampling seed 0] done in 5s
+  [full pool, sampling seed 0] done in 191s
+
+RESULTS: 200 seed tracks x 1 sampling seed(s), top-10, mean +- std over runs
+K=500, alpha=0.5, beta=0.5, exclude_same_artist=True, max_per_artist=1, missing_style=renormalize
+  pool     method                                       genre agree@10      transition@10          |dBPM|@10             ILD@10 artist rep (uncapped)       labeled/list     seeds w/ label
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  labeled  (a) transition score only (v0.1)                      0.064              0.903               0.90              0.668              0.035              10.00               1.00
+  labeled  (b) audio similarity only                             0.113              0.556               7.84              0.454              0.087              10.00               1.00
+  labeled  (c) audio + style relevance                           0.163              0.517              11.54              0.300              0.221              10.00               1.00
+  labeled  (d) alpha*relevance + beta*transition                 0.117              0.836               2.80              0.500              0.082              10.00               1.00
+  full     (a) transition score only (v0.1)                      0.000              0.980               0.31              0.460              0.015               0.04               0.04
+  full     (b) audio similarity only                             0.167              0.648               3.77              0.345              0.014               0.10               0.09
+  full     (c) audio + style relevance                           0.371              0.561               8.47              0.202              0.339               0.18               0.15
+  full     (d) alpha*relevance + beta*transition                 0.265              0.899               1.50              0.279              0.113               0.19               0.17
+
+genre_agree@10 is averaged over seeds with >=1 labeled result ('seeds w/ label' = that share). Primary protocol: labeled pool.
+artist rep is measured on the uncapped top-10; all other columns on the capped list.
+
+KNOWN LIMITATIONS
+- **FAISS missing-style retrieval bias.** Retrieval searches [sqrt(w_audio)·audio, sqrt(w_style)·style]. A candidate without a style vector (artist on no shared album; ~38% of tracks) has a zero style block, so for a seed *with* style its inner product is only w_audio·cos_audio and it ranks below styled candidates in the top-K. Exact re-ranking renormalizes the relevance for such candidates (0.70 audio / 0.30 era), but it can only re-rank what FAISS returned, so style-less tracks are under-represented for methods (c) and (d). For a seed without style, the query's style block is zero and retrieval is audio-only, which is unbiased.
+- Method (a) scans the whole pool; (b) uses an audio-only index; (c) and (d) re-rank the top K=500 from the combined index.
+- Genre labels come from a different Kaggle dataset matched by track ID; a track can carry several genres there, and any overlap counts as agreement.
