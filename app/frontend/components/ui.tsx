@@ -39,8 +39,9 @@ export function EnergyBar({ value, target, width = "w-20" }: { value: number; ta
 export function ScoreChip({ score, label = "match" }: { score: number; label?: string }) {
   const pct = Math.round(score * 100);
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-bold text-accent-hi tabular-nums">
-      {pct}% <span className="font-medium text-text-2">{label}</span>
+    // Sits on cover art: dark translucent pill + blur keeps it readable on light and dark covers.
+    <span className="inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-0.5 text-xs font-bold text-white tabular-nums shadow-sm ring-1 ring-white/15 backdrop-blur-md">
+      {pct}% <span className="font-medium text-white/75">{label}</span>
     </span>
   );
 }

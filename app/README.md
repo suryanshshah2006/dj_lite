@@ -46,9 +46,19 @@ one thread per core the bundled BLAS copies and faiss's workers commit an extra 
 measurable speed-up on single-query search.
 
 Search uses a SQLite FTS5 index over title + artists (`app/backend/cache/search.sqlite`,
-~215 MB, gitignored): exact title matches first, then title prefixes, then artist matches,
-then any-field matches; ties broken by a popularity proxy (number of duplicate releases).
-Queries take ~1–10 ms. Without the index the backend falls back to a slow in-memory scan.
+~255 MB, gitignored): exact title matches first, then title prefixes, then artist matches,
+then any-field matches. Within a tier, results are ordered by the primary artist's
+prominence, precomputed at build time (`search.prominence` in `settings.yaml`):
+
+- `co_artists` (default): distinct artists sharing an album with them. Originals appear on
+  compilations and soundtracks, cover/tribute acts mostly on single-artist albums, so
+  "bohemian rhapsody" returns Queen first and "shape of you" Ed Sheeran.
+- `tracks`: number of tracks by the artist. Favours prolific cover acts (Vitamin String
+  Quartet, 1,474 tracks, comes first for both queries above).
+
+Then the duplicate-release popularity proxy, then shorter titles. Specific queries take
+~1–6 ms; one- or two-letter prefixes ~50–70 ms (prominence ordering looks at the first
+`tier_window` matches). Without the index the backend falls back to a slow in-memory scan.
 
 Tests use a small synthetic fixture and never load the full dataset:
 

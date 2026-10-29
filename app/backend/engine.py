@@ -56,7 +56,9 @@ class Engine:
         pa.default_memory_pool().release_unused()  # Arrow keeps ~0.7 GB of read buffers otherwise
         db = PROJECT_ROOT / settings["search"]["db_path"]
         if db.exists():
-            index = SearchIndex(db, tier_cap=settings["search"]["tier_cap"])
+            index = SearchIndex(db, tier_cap=settings["search"]["tier_cap"],
+                                prominence=settings["search"].get("prominence", "co_artists"),
+                                tier_window=settings["search"].get("tier_window", 5000))
             if index.n_tracks != len(tracks):
                 log.warning("search index has %d tracks, dataset %d: rebuild it with "
                             "python -m app.backend.build_search_index", index.n_tracks, len(tracks))

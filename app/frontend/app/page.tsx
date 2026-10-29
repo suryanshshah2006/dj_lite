@@ -66,6 +66,9 @@ export default function HomePage() {
           />
           {searching && <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-label="Searching" />}
         </label>
+        <p className="mt-3 max-w-2xl px-5 text-xs text-muted">
+          Searching 1.09M tracks from the Spotify 1.2M+ Songs dataset. Some songs may be missing.
+        </p>
       </section>
 
       {error && (

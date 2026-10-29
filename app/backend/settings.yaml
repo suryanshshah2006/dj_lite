@@ -5,6 +5,12 @@ search:
   limit: 20
   db_path: app/backend/cache/search.sqlite   # FTS5 index; rebuild: python -m app.backend.build_search_index
   tier_cap: 400            # max rows read per ranking tier (keeps common queries fast)
+  # Tie-break within a tier by the primary artist's prominence (precomputed in the index):
+  #   co_artists: distinct artists sharing an album with them (originals > cover/tribute acts)
+  #   tracks:     number of tracks by the artist (favours prolific cover acts, e.g.
+  #               Vitamin String Quartet outranks Queen on "bohemian rhapsody")
+  prominence: co_artists
+  tier_window: 5000        # prominence ordering looks at the first N matches per tier (exact below N)
 
 # Shown on Home before the user searches (GET /api/featured). Dataset ids; unknown ids are skipped.
 featured:

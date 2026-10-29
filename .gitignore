@@ -11,3 +11,6 @@ app/frontend/.env*.local
 app/backend/cache/
 *.sqlite
 *.sqlite3
+
+# App screenshots (contain cover art; local only)
+reports/screenshots/

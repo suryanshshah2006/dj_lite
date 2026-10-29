@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
+from app.backend.build_search_index import artist_prominence
 from app.backend.engine import Engine
 from app.backend.main import load_settings
 from app.backend.search import SearchIndex, build_index, normalize
@@ -16,17 +18,17 @@ def _id(k: int) -> str:
     return f"{k:022d}"
 
 
-ROWS = [  # (id, name, artists, popularity)
-    (_id(1), "Love Story", ["Taylor Swift"], 3),
-    (_id(2), "Lovely", ["Billie Eilish", "Khalid"], 9),
-    (_id(3), "Love", ["Kendrick Lamar"], 0),
-    (_id(4), "Love", ["Lana Del Rey"], 5),
-    (_id(5), "Crazy in Love", ["Beyoncé"], 8),
-    (_id(6), "Halo", ["Beyoncé"], 2),
-    (_id(7), "Don't Stop Me Now", ["Queen"], 1),
-    (_id(8), "Queen of Hearts", ["Juice Newton"], 4),
-    (_id(9), "Killer Queen", ["Queen"], 0),
-    (_id(10), "Somebody to Love", ["Queens of the Stone Age"], 7),
+ROWS = [  # (id, name, artists, popularity, prom_co_artists, prom_tracks)
+    (_id(1), "Love Story", ["Taylor Swift"], 3, 0, 0),
+    (_id(2), "Lovely", ["Billie Eilish", "Khalid"], 9, 0, 0),
+    (_id(3), "Love", ["Kendrick Lamar"], 0, 0, 0),
+    (_id(4), "Love", ["Lana Del Rey"], 5, 0, 0),
+    (_id(5), "Crazy in Love", ["Beyoncé"], 8, 0, 0),
+    (_id(6), "Halo", ["Beyoncé"], 2, 0, 0),
+    (_id(7), "Don't Stop Me Now", ["Queen"], 1, 0, 0),
+    (_id(8), "Queen of Hearts", ["Juice Newton"], 4, 0, 0),
+    (_id(9), "Killer Queen", ["Queen"], 0, 0, 0),
+    (_id(10), "Somebody to Love", ["Queens of the Stone Age"], 7, 0, 0),
 ]
 
 
@@ -78,7 +80,8 @@ def test_engine_uses_index_and_falls_back(tmp_path):
     settings = load_settings()
     df, style = fixture_tracks()
     db = tmp_path / "s.sqlite"
-    build_index(zip(df["id"], df["name"], df["artists"], np.zeros(len(df))), db)
+    z = np.zeros(len(df))
+    build_index(zip(df["id"], df["name"], df["artists"], z, z, z), db)
     idx = SearchIndex(db)
     fts = Engine(df, style, rcfg, tcfg, settings, search_index=idx)
     scan = Engine(df, style, rcfg, tcfg, settings)
@@ -86,3 +89,43 @@ def test_engine_uses_index_and_falls_back(tmp_path):
     for eng in (fts, scan):
         assert eng.search(name)[0]["name"] == name
     idx.close()
+
+
+COVERS = [  # one title by the original artist and by prolific cover acts
+    (_id(21), "Bohemian Rhapsody", ["Queen"], 0, 57, 5),
+    (_id(22), "Bohemian Rhapsody", ["Vitamin String Quartet"], 0, 1, 1474),
+    (_id(23), "Bohemian Rhapsody", ["Richard Cheese"], 9, 16, 163),
+    (_id(24), "Bohemian Rhapsody - Live", ["Queen"], 0, 57, 5),
+]
+
+
+@pytest.mark.parametrize("prominence, first", [("co_artists", _id(21)), ("tracks", _id(22))])
+def test_prominence_breaks_ties_within_tier(tmp_path, prominence, first):
+    db = tmp_path / "covers.sqlite"
+    build_index(iter(COVERS), db)
+    idx = SearchIndex(db, prominence=prominence)
+    res = idx.search("bohemian rhapsody")
+    assert res[0] == first
+    assert res[-1] == _id(24)  # prefix tier stays below every exact-title match
+    # prominence outranks the duplicate-release popularity proxy: Richard Cheese (pop 9,
+    # middle prominence under both scores) is second, not first
+    assert res.index(_id(23)) == 1
+    idx.close()
+
+
+def test_prominence_setting_validated(tmp_path):
+    db = tmp_path / "s.sqlite"
+    build_index(iter(COVERS), db)
+    with pytest.raises(ValueError):
+        SearchIndex(db, prominence="plays")
+
+
+def test_artist_prominence():
+    t = pd.DataFrame({
+        "artist_ids": [["q"], ["q", "x"], ["v"], ["v"], ["v"], ["y"]],
+        "album_id": ["comp", "comp", "tribute1", "tribute2", "tribute2", "comp"],
+    })
+    p = artist_prominence(t)
+    # q shares album "comp" with x and y; v only with itself
+    assert p["co_artists"].tolist() == [2, 2, 0, 0, 0, 2]
+    assert p["tracks"].tolist() == [2, 2, 3, 3, 3, 1]

@@ -112,6 +112,11 @@ def main() -> None:
                         help="v1: seeds per run; v2: cap on seeds per pool (debugging)")
     parser.add_argument("--sampling-seeds", type=int, nargs="+", help="v1 only")
     parser.add_argument("--out-name", help="basename for reports/<name>.{txt,csv,md}")
+    parser.add_argument("--replot", action="store_true",
+                        help="v2: redraw the Pareto figure from reports/<out-name>.csv only")
+    parser.add_argument("--by-source", action="store_true",
+                        help="v2: genre agreement for ID- vs name-matched seeds, from the "
+                             "saved per-seed results (no re-scoring)")
     args = parser.parse_args()
 
     paths, rcfg, tcfg = load_configs(args.paths)
@@ -119,6 +124,16 @@ def main() -> None:
                           .read_text(encoding="utf-8"))
     version = args.version or ecfg.get("version", "v1")
     args.out_name = args.out_name or ("evaluation" if version == "v1" else "eval_v2")
+    if args.replot or args.by_source:
+        rdir = PROJECT_ROOT / paths["reports_dir"]
+        if args.replot:
+            summary = pd.read_csv(rdir / f"{args.out_name}.csv")
+            fig = PROJECT_ROOT / paths["figures_dir"] / "pareto_alpha.png"
+            plot_pareto(summary, ecfg, fig)
+            print(f"wrote {fig}")
+        if args.by_source:
+            by_source_v2(args, paths, ecfg)
+        return
     (main_v1 if version == "v1" else main_v2)(args, paths, rcfg, tcfg, ecfg)
 
 
@@ -560,6 +575,46 @@ def v2_tables(summary: pd.DataFrame, ecfg: dict, md: bool) -> str:
     return "\n".join(out)
 
 
+def _place_labels(ax, labels: list[dict], color: str, min_gap_pt: float = 11.0) -> None:
+    """Annotate points without overlaps: start each label at its preferred offset, then push
+    labels apart vertically (in display space) and draw a leader line to any label that
+    ended up away from its point. labels: {text, x, y, dx, dy} with offsets in points."""
+    fig = ax.figure
+    fig.canvas.draw()
+    pt = fig.dpi / 72.0
+    to_px = ax.transData.transform
+    items = []
+    for lab in labels:
+        px, py = to_px((lab["x"], lab["y"]))
+        items.append({**lab, "px": px, "py": py,
+                      "ly": py + lab["dy"] * pt, "lx": px + lab["dx"] * pt})
+    # Greedy: walk labels top to bottom; a label that overlaps the one above (horizontally
+    # close, vertically within min_gap) is moved down just below it. Labels whose points
+    # nearly coincide keep their given `order` (e.g. by alpha) so a stack reads in sequence.
+    items.sort(key=lambda d: -d["ly"])
+    clusters = []
+    for it in items:
+        c = clusters[-1] if clusters else None
+        if c and c[-1]["ly"] - it["ly"] < min_gap_pt * pt and abs(c[-1]["lx"] - it["lx"]) < 60 * pt:
+            c.append(it)
+        else:
+            clusters.append([it])
+    items = [it for c in clusters for it in sorted(c, key=lambda d: d.get("order", 0))]
+    placed = []
+    for it in items:
+        for above in placed:
+            if abs(above["lx"] - it["lx"]) < 60 * pt and above["ly"] - it["ly"] < min_gap_pt * pt:
+                it["ly"] = above["ly"] - min_gap_pt * pt
+        placed.append(it)
+    for it in placed:
+        off = ((it["lx"] - it["px"]) / pt, (it["ly"] - it["py"]) / pt)
+        moved = abs(off[1] - it["dy"]) > 2
+        ax.annotate(it["text"], (it["x"], it["y"]), textcoords="offset points", xytext=off,
+                    color=color, fontsize=9, va="center",
+                    arrowprops=dict(arrowstyle="-", color=color, lw=0.6, shrinkA=0, shrinkB=4)
+                    if moved else None)
+
+
 def plot_pareto(summary: pd.DataFrame, ecfg: dict, path: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -590,6 +645,7 @@ def plot_pareto(summary: pd.DataFrame, ecfg: dict, path: Path) -> None:
                     [[r["genre_agree"] - r["genre_agree_lo"]],
                      [r["genre_agree_hi"] - r["genre_agree"]]])
 
+        labels = []
         sw = s[s["method"] == "full"].sort_values("alpha")
         ax.plot(sw["trans"], sw["genre_agree"], color=sweep_c, linewidth=2, zorder=2,
                 label="(d) alpha sweep")
@@ -597,8 +653,8 @@ def plot_pareto(summary: pd.DataFrame, ecfg: dict, path: Path) -> None:
             xe, ye = err(r)
             ax.errorbar(r["trans"], r["genre_agree"], xerr=xe, yerr=ye, fmt="o", ms=8,
                         color=sweep_c, mec=surface, mew=2, elinewidth=1, capsize=0, zorder=3)
-            ax.annotate(f"α={r['alpha']:g}", (r["trans"], r["genre_agree"]),
-                        textcoords="offset points", xytext=(7, 5), color=text2, fontsize=9)
+            labels.append({"text": f"α={r['alpha']:g}", "x": r["trans"], "y": r["genre_agree"],
+                           "dx": 9, "dy": 7, "order": -r["alpha"]})
         for m, (c, mk, lbl) in base.items():
             r = s[s["method"] == m]
             if r.empty:
@@ -608,14 +664,16 @@ def plot_pareto(summary: pd.DataFrame, ecfg: dict, path: Path) -> None:
             ax.errorbar(r["trans"], r["genre_agree"], xerr=xe, yerr=ye, fmt=mk, ms=9,
                         color=c, mec=surface, mew=2, elinewidth=1, capsize=0, zorder=3,
                         label=lbl)
-            ax.annotate(lbl.split(" ")[0], (r["trans"], r["genre_agree"]),
-                        textcoords="offset points", xytext=(7, -12), color=text2, fontsize=9)
+            labels.append({"text": lbl.split(" ")[0], "x": r["trans"], "y": r["genre_agree"],
+                           "dx": 9, "dy": -9})
         n_seeds = int(s["n_seeds"].iat[0])
         ax.set_xlabel("mean transition score @10 (v0.1)", color=text2)
         ax.set_ylabel("genre agreement @10 (micro)", color=text2)
         ax.set_title(f"{pool} pool ({n_seeds:,} seeds), 95% bootstrap CIs",
                      color=text, loc="left", fontsize=11)
-        ax.legend(frameon=False, labelcolor=text2, fontsize=9, loc="best")
+        ax.margins(x=0.12, y=0.08)  # room for labels pushed past the outermost points
+        ax.legend(frameon=False, labelcolor=text2, fontsize=9, loc="lower center")
+        _place_labels(ax, labels, text2)
     fig.suptitle("Relevance vs transition trade-off: alpha sweep of method (d)",
                  color=text, x=0.01, ha="left", fontsize=13)
     fig.tight_layout()
@@ -623,17 +681,62 @@ def plot_pareto(summary: pd.DataFrame, ecfg: dict, path: Path) -> None:
     plt.close(fig)
 
 
-def main_v2(args, paths: dict, rcfg: dict, tcfg: dict, ecfg: dict) -> None:
-    v2 = ecfg["v2"]
-    tracks, style = load_tracks(paths)
+def _clean_keys(tracks: pd.DataFrame, paths: dict) -> pd.DataFrame:
     clean = pd.read_parquet(PROJECT_ROOT / paths["processed_dir"] / "tracks_clean.parquet",
                             columns=["id", "name_norm", "artists"])
     clean = clean.set_index("id").loc[tracks["id"]]
-    clean_keys = pd.DataFrame({
+    return pd.DataFrame({
         "idx": np.arange(len(tracks)),
         "name_norm": clean["name_norm"].to_numpy(),
         "primary": [a[0] if len(a) else "" for a in clean["artists"]],
     })
+
+
+def by_source_v2(args, paths: dict, ecfg: dict) -> None:
+    """Genre agreement split by how the *seed's* label was obtained: ID match (incl. tracks
+    labeled by both ID and name) vs name match only. Re-derives label sources with the same
+    deterministic matching as main_v2 and re-bootstraps the saved per-seed results."""
+    rdir = PROJECT_ROOT / paths["reports_dir"]
+    per_seed = pd.read_parquet(rdir / f"{args.out_name}_per_seed.parquet")
+    tracks = pd.read_parquet(PROJECT_ROOT / paths["features_dir"] / "track_features.parquet",
+                             columns=["id", "name", "artists", "year", "duration_ms"])
+    labels, source, _, _ = build_labels_v2(tracks, _clean_keys(tracks, paths), paths, ecfg)
+    sub = np.flatnonzero(labels.notna().to_numpy())  # labeled-pool position -> track index
+    groups = {"ID-matched seeds (id or id+name)": ("id", "both"), "name-only seeds": ("name",)}
+    order = {"transition": 0, "audio": 1, "relevance": 2, "full": 3, "random": 4}
+    rows, md = [], [f"# Evaluation v2: genre agreement by seed label source", "",
+                    "Same per-seed results as eval_v2; seeds split by how their own genre label "
+                    "was obtained. Candidates' labels are unchanged (both sources). "
+                    f"{ecfg['v2']['bootstrap']['n_resamples']} bootstrap resamples per group, "
+                    "95% CIs.", ""]
+    for pool, ps in per_seed.groupby("pool", sort=False):
+        tidx = sub[ps["seed_idx"].to_numpy()] if pool == "labeled" else ps["seed_idx"].to_numpy()
+        src = source.to_numpy()[tidx]
+        for gname, srcs in groups.items():
+            part = ps[np.isin(src, srcs)]
+            seeds = np.unique(part["seed_idx"])
+            st = sub[seeds] if pool == "labeled" else seeds
+            sm = bootstrap_v2(part, pd.Series(labels.to_numpy()[st], index=seeds),
+                              ecfg["v2"]["bootstrap"])
+            sm = sm[(sm["method"] != "full") | sm["is_d"]].sort_values(
+                "method", key=lambda c: c.map(order))
+            md += [f"### {pool} pool, {gname}: {len(seeds):,} seeds", "",
+                   "| method | genre agree (micro) | genre agree (macro) | seeds w/ label |",
+                   "|---|---:|---:|---:|"]
+            for _, r in sm.iterrows():
+                md.append(f"| {_row_label(r, ecfg)} | {_ci(r, 'genre_agree', 3)} | "
+                          f"{_ci(r, 'genre_macro', 3)} | {r['seeds_with_label']:.2f} |")
+                rows.append({"pool": pool, "group": gname, **r.to_dict()})
+            md.append("")
+    (rdir / f"{args.out_name}_by_source.md").write_text("\n".join(md), encoding="utf-8")
+    pd.DataFrame(rows).to_csv(rdir / f"{args.out_name}_by_source.csv", index=False)
+    print("\n".join(md))
+
+
+def main_v2(args, paths: dict, rcfg: dict, tcfg: dict, ecfg: dict) -> None:
+    v2 = ecfg["v2"]
+    tracks, style = load_tracks(paths)
+    clean_keys = _clean_keys(tracks, paths)
     labels, source, label_lines, examples = build_labels_v2(tracks, clean_keys, paths, ecfg)
     has = labels.notna().to_numpy()
 

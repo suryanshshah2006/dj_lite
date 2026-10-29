@@ -2,13 +2,17 @@
 
 Build:  python -m app.backend.build_search_index   (writes app/backend/cache/search.sqlite)
 
-Ranking tiers (each tier sorted by popularity proxy, then shorter title):
+Ranking tiers; within a tier: tier-specific refinement, then the primary artist's
+prominence (precomputed at build time, see build_search_index.artist_prominence),
+then the duplicate-release popularity proxy, then shorter title:
   0  exact title            ("one more time")
   1  title prefix           ("one more" -> "One More Time", "One More Night")
   2  every token in artists ("daft punk"; artists equal to the query come first)
   3  every token somewhere in title or artists ("daft one more")
-Tiers 0-1 use a B-tree index on the normalized title; tiers 2-3 use FTS5. Each tier
-reads at most `tier_cap` rows, so common queries ("a", "love") stay fast.
+Tiers 0-1 use a B-tree index on the normalized title; tiers 2-3 use FTS5. Each tier keeps
+at most `tier_cap` rows. Prominence ordering looks at the first `tier_window` matches of a
+tier, so it is exact for any query with fewer matches and bounded for very common prefixes
+("a", "the"), which keeps every query well under 100 ms.
 """
 
 from __future__ import annotations
@@ -20,7 +24,8 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+PROMINENCE = ("co_artists", "tracks")  # columns prom_<name> in the tracks table
 _APOS = re.compile(r"['’`]")
 _NONWORD = re.compile(r"[^\w]+")
 _MAX_CHAR = "\U0010ffff"
@@ -34,9 +39,10 @@ def normalize(s: str) -> str:
     return " ".join(s.replace("_", " ").split())
 
 
-def build_index(rows: Iterable[tuple[str, str, list[str], float]], db_path: Path,
+def build_index(rows: Iterable[tuple[str, str, list[str], float, float, float]], db_path: Path,
                 batch: int = 50_000) -> int:
-    """rows: (track_id, name, artists, popularity). Replaces db_path atomically."""
+    """rows: (track_id, name, artists, popularity, prom_co_artists, prom_tracks).
+    Replaces db_path atomically."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = db_path.with_suffix(".building")
     tmp.unlink(missing_ok=True)
@@ -45,7 +51,8 @@ def build_index(rows: Iterable[tuple[str, str, list[str], float]], db_path: Path
         PRAGMA journal_mode = OFF;
         PRAGMA synchronous = OFF;
         CREATE TABLE tracks (rowid INTEGER PRIMARY KEY, id TEXT NOT NULL, name_key TEXT NOT NULL,
-                             artists_key TEXT NOT NULL, pop REAL NOT NULL);
+                             artists_key TEXT NOT NULL, pop REAL NOT NULL,
+                             prom_co_artists REAL NOT NULL, prom_tracks REAL NOT NULL);
         CREATE VIRTUAL TABLE fts USING fts5(name_key, artists_key, content='tracks',
             content_rowid='rowid', tokenize='unicode61', prefix='2 3');
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
@@ -53,20 +60,21 @@ def build_index(rows: Iterable[tuple[str, str, list[str], float]], db_path: Path
     n, buf = 0, []
 
     def flush():
-        db.executemany("INSERT INTO tracks VALUES (?, ?, ?, ?, ?)", buf)
+        db.executemany("INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?)", buf)
         buf.clear()
 
-    for tid, name, artists, pop in rows:
+    for tid, name, artists, pop, prom_co, prom_tr in rows:
         n += 1
         buf.append((n, tid, normalize(name), " | ".join(normalize(a) for a in artists),
-                    float(pop)))
+                    float(pop), float(prom_co), float(prom_tr)))
         if len(buf) >= batch:
             flush()
     flush()
     db.executescript("""
         INSERT INTO fts(fts) VALUES ('rebuild');
         INSERT INTO fts(fts) VALUES ('optimize');
-        CREATE INDEX tracks_name ON tracks(name_key);
+        CREATE INDEX tracks_name_co ON tracks(name_key, prom_co_artists);
+        CREATE INDEX tracks_name_tr ON tracks(name_key, prom_tracks);
     """)
     db.executemany("INSERT INTO meta VALUES (?, ?)",
                    [("schema_version", str(SCHEMA_VERSION)), ("n_tracks", str(n))])
@@ -80,11 +88,15 @@ def build_index(rows: Iterable[tuple[str, str, list[str], float]], db_path: Path
 class SearchIndex:
     """Read-only, one SQLite connection per thread (FastAPI runs sync routes in a pool)."""
 
-    def __init__(self, db_path: Path, tier_cap: int = 400):
+    def __init__(self, db_path: Path, tier_cap: int = 400, prominence: str = "co_artists",
+                 tier_window: int = 5000):
         if not db_path.exists():
             raise FileNotFoundError(db_path)
+        if prominence not in PROMINENCE:
+            raise ValueError(f"prominence must be one of {PROMINENCE}")
+        self.prom = f"prom_{prominence}"
         self.uri = f"{db_path.resolve().as_uri()}?mode=ro"
-        self.tier_cap = tier_cap
+        self.tier_cap, self.tier_window = tier_cap, tier_window
         self._local = threading.local()
         meta = dict(self._db().execute("SELECT key, value FROM meta"))
         if int(meta.get("schema_version", 0)) != SCHEMA_VERSION:
@@ -112,19 +124,27 @@ class SearchIndex:
             return []
         db, cap = self._db(), self.tier_cap
         tokens = key.split()
-        cols = "t.rowid, t.id, t.name_key, t.artists_key, t.pop"
+        prom, win = self.prom, self.tier_window
+        cols = f"t.rowid, t.id, t.name_key, t.artists_key, t.pop, t.{prom}"
+
+        def by_prom(matches: str) -> str:
+            # the most prominent `cap` rows among the first `win` matches
+            return (f"SELECT {cols} FROM ({matches} LIMIT {win}) m JOIN tracks t "
+                    f"ON t.rowid = m.rowid ORDER BY t.{prom} DESC LIMIT ?")
+
         fts = f"SELECT {cols} FROM fts JOIN tracks t ON t.rowid = fts.rowid WHERE fts MATCH ?"
         tiers = [
-            (f"SELECT {cols} FROM tracks t WHERE name_key = ? LIMIT ?", (key, cap)),
-            (f"SELECT {cols} FROM tracks t WHERE name_key > ? AND name_key < ? LIMIT ?",
+            (by_prom("SELECT rowid FROM tracks WHERE name_key = ?"), (key, cap)),
+            (by_prom("SELECT rowid FROM tracks WHERE name_key > ? AND name_key < ?"),
              (key, key + _MAX_CHAR, cap)),
-            (fts + " LIMIT ?", (self._fts_query(tokens, "artists_key"), cap)),
+            (by_prom("SELECT rowid FROM fts WHERE fts MATCH ?"),
+             (self._fts_query(tokens, "artists_key"), cap)),
             (fts + " ORDER BY rank LIMIT ?", (self._fts_query(tokens, None), cap)),
         ]
         seen: set[int] = set()
         ranked: list[tuple] = []
         for tier, (sql, params) in enumerate(tiers):
-            for rowid, tid, name, artists, pop in db.execute(sql, params):
+            for rowid, tid, name, artists, pop, pr in db.execute(sql, params):
                 if rowid in seen:
                     continue
                 seen.add(rowid)
@@ -136,7 +156,7 @@ class SearchIndex:
                     sub = 0 if all(t in name for t in tokens) else 1
                 else:
                     sub = 0
-                ranked.append((tier, sub, -pop, len(name), rowid, tid))
+                ranked.append((tier, sub, -pr, -pop, len(name), rowid, tid))
             if tier >= 1 and len(ranked) >= limit:
                 break  # better tiers already fill the page
         ranked.sort()
