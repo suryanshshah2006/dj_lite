@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, COVERS_ENABLED } from "@/lib/api";
 import { coverGradient, initials } from "@/lib/camelot";
 import type { Track } from "@/lib/types";
 
@@ -51,12 +51,14 @@ export function Cover({ track, className = "", rounded = "rounded-lg" }: {
 }) {
   // url: undefined = not known yet, null = no cover. `loaded` is keyed by URL so an image
   // that finished loading (e.g. from the browser cache, before this effect ran) stays shown.
-  const [url, setUrl] = useState<string | null | undefined>(urlCache.get(track.id));
+  const [url, setUrl] = useState<string | null | undefined>(
+    COVERS_ENABLED ? urlCache.get(track.id) : null);
   const [loaded, setLoaded] = useState<string | null>(null);
   const status = url === null ? "fallback" : url && loaded === url ? "image" : "loading";
 
   useEffect(() => {
     let alive = true;
+    if (!COVERS_ENABLED) return;  // gradient tiles only; no cover requests at all
     if (urlCache.has(track.id)) {
       setUrl(urlCache.get(track.id)!);
       return;
@@ -67,7 +69,8 @@ export function Cover({ track, className = "", rounded = "rounded-lg" }: {
   }, [track.id]);
 
   return (
-    <div className={`relative aspect-square overflow-hidden ${rounded} ${className}`}>
+    // size container: the initials' cqw font size scales with the tile, not the viewport
+    <div className={`relative aspect-square overflow-hidden [container-type:inline-size] ${rounded} ${className}`}>
       {status !== "image" && (
         status === "fallback" ? (
           <div

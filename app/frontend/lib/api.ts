@@ -5,6 +5,9 @@ import { mockApi } from "./mock/engine";
 import type { EvalSummary, MixRequest, MixResponse, NextRequest, NextResponse, Track } from "./types";
 
 export const API_MODE = process.env.NEXT_PUBLIC_API_MODE === "mock" ? "mock" : "live";
+/** NEXT_PUBLIC_COVERS=off: never fetch or show Spotify artwork or the playback embed;
+ *  covers are the generated gradient tiles (public-safe screenshots and demos). */
+export const COVERS_ENABLED = process.env.NEXT_PUBLIC_COVERS !== "off";
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {

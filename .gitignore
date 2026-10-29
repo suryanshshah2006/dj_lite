@@ -15,3 +15,10 @@ app/backend/cache/
 # App screenshots (contain cover art; local only)
 reports/screenshots/
 *.log
+
+# Album art never goes in git: Spotify covers are JPEG/WebP (docs/assets are captured with
+# NEXT_PUBLIC_COVERS=off and contain only generated tiles)
+*.jpg
+*.jpeg
+*.webp
+.pytest_cache/

@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { usePlayer } from "./PlayerContext";
 import { Cover } from "./Cover";
 import { CamelotPill } from "./ui";
+import { COVERS_ENABLED } from "@/lib/api";
 
 export function PlayerBar() {
   const { current, stop } = usePlayer();
@@ -31,13 +32,20 @@ export function PlayerBar() {
                   </div>
                 </div>
               </div>
-              <iframe
-                title={`Spotify player: ${current.name}`}
-                src={`https://open.spotify.com/embed/track/${current.id}?utm_source=generator&theme=0`}
-                className="h-[80px] min-w-0 flex-1 rounded-xl"
-                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                loading="lazy"
-              />
+              {COVERS_ENABLED ? (
+                <iframe
+                  title={`Spotify player: ${current.name}`}
+                  src={`https://open.spotify.com/embed/track/${current.id}?utm_source=generator&theme=0`}
+                  className="h-[80px] min-w-0 flex-1 rounded-xl"
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                />
+              ) : (
+                // the embed shows album artwork, so it is off together with covers
+                <p className="flex h-[80px] min-w-0 flex-1 items-center rounded-xl border border-dashed border-border px-4 text-sm text-muted">
+                  Playback preview is disabled in this build (NEXT_PUBLIC_COVERS=off).
+                </p>
+              )}
               <button
                 type="button"
                 onClick={stop}
