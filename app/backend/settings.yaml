@@ -3,6 +3,31 @@ cors_origins: ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 search:
   limit: 20
+  db_path: app/backend/cache/search.sqlite   # FTS5 index; rebuild: python -m app.backend.build_search_index
+  tier_cap: 400            # max rows read per ranking tier (keeps common queries fast)
+
+# Shown on Home before the user searches (GET /api/featured). Dataset ids; unknown ids are skipped.
+featured:
+  - 1LPGNTuBxFsfy0KFtU4WAW   # Duke Dumont - Worship
+  - 69kOkLUCkxIZYexIgSG8rq   # Daft Punk - Get Lucky
+  - 32OlwWuMpZ6b0aN2RZOeMS   # Mark Ronson - Uptown Funk
+  - 1dI77VhaLcQSgQLSnIs03D   # Dua Lipa - Levitating
+  - 0CYdYS5MP33toMaug9kBcy   # Major Lazer - Lean On
+  - 0FE9t6xYkqWXU2ahLh6D8X   # Ed Sheeran - Shape of You
+  - 4TK18Te3S79HAL2K4pcPBV   # Billie Eilish - bad guy
+  - 3ERa3mEeOnrh2Mc47qM6T1   # Beyonce - Halo
+  - 7J1uxwnxfQLu4APicE5Rnj   # Michael Jackson - Billie Jean
+  - 5xPazRvyrkVootu8pM9vUG   # Adele - Rolling in the Deep
+  - 5UWwZ5lm5PKu6eKsHAGxOk   # Foo Fighters - Everlong
+  - 7xmwLmkoWpghkq8jyEhtbx   # Arctic Monkeys - Do I Wanna Know?
+  - 32mwlJqE38D1qCoFwVjgpZ   # Queen - Bohemian Rhapsody
+  - 2374M0fQpWi3dLnB54qaLX   # TOTO - Africa
+  - 1HkXY1LjFkAQF01DctB796   # New Order - Blue Monday
+  - 3skn2lauGk7Dx6bVIt5DVj   # Muse - Starlight
+  - 2AP7m2dBb8ULTx4Gc1rdMc   # The Notorious B.I.G. - Juicy
+  - 2xLMifQCjDGFmkHkpNLD9h   # Travis Scott - SICKO MODE
+  - 2M9ro2krNb7nr7HSprkEgo   # Tracy Chapman - Fast Car
+  - 6ZjJ9GbDScXotGP8PTvz5G   # The Dave Brubeck Quartet - Take Five
 
 next:
   default_n: 10

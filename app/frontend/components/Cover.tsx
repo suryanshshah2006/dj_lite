@@ -44,33 +44,25 @@ function loadCover(id: string): Promise<string | null> {
   return inflight.get(id)!;
 }
 
-type Status = "loading" | "image" | "fallback";
-
 export function Cover({ track, className = "", rounded = "rounded-lg" }: {
   track: Pick<Track, "id" | "name" | "camelot_num" | "camelot_letter">;
   className?: string;
   rounded?: string;
 }) {
-  const cached = urlCache.get(track.id);
-  const [url, setUrl] = useState<string | null | undefined>(cached);
-  const [status, setStatus] = useState<Status>(
-    cached === undefined ? "loading" : cached ? "loading" : "fallback",
-  );
+  // url: undefined = not known yet, null = no cover. `loaded` is keyed by URL so an image
+  // that finished loading (e.g. from the browser cache, before this effect ran) stays shown.
+  const [url, setUrl] = useState<string | null | undefined>(urlCache.get(track.id));
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const status = url === null ? "fallback" : url && loaded === url ? "image" : "loading";
 
   useEffect(() => {
     let alive = true;
     if (urlCache.has(track.id)) {
-      const u = urlCache.get(track.id)!;
-      setUrl(u);
-      setStatus(u ? "loading" : "fallback");
+      setUrl(urlCache.get(track.id)!);
       return;
     }
-    setStatus("loading");
-    loadCover(track.id).then((u) => {
-      if (!alive) return;
-      setUrl(u);
-      setStatus(u ? "loading" : "fallback");
-    });
+    setUrl(undefined);
+    loadCover(track.id).then((u) => { if (alive) setUrl(u); });
     return () => { alive = false; };
   }, [track.id]);
 
@@ -98,8 +90,8 @@ export function Cover({ track, className = "", rounded = "rounded-lg" }: {
           src={url}
           alt={`Cover art for ${track.name}`}
           loading="lazy"
-          onLoad={() => setStatus("image")}
-          onError={() => { urlCache.set(track.id, null); setUrl(null); setStatus("fallback"); }}
+          onLoad={() => setLoaded(url)}
+          onError={() => { urlCache.set(track.id, null); setUrl(null); }}
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${status === "image" ? "opacity-100" : "opacity-0"}`}
         />
       )}

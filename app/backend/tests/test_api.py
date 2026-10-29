@@ -117,6 +117,20 @@ def test_search_no_results_and_validation(client):
     assert client.get("/api/search", params={"q": ""}).status_code == 422
 
 
+def test_featured_keeps_order_and_skips_unknown(engine, settings, tmp_path):
+    s = {**settings, "featured": [_id(3), "0" * 22, _id(1)]}
+    covers = CoverCache(tmp_path / "covers.sqlite", FakeFetcher())
+    app = create_app(engine_factory=lambda _: engine, cover_cache=covers, settings=s,
+                     reports_root=tmp_path)
+    old = engine.settings
+    engine.settings = s
+    try:
+        with TestClient(app) as c:
+            assert [t["id"] for t in c.get("/api/featured").json()] == [_id(3), _id(1)]
+    finally:
+        engine.settings = old
+
+
 def test_track_details(client):
     t = client.get(f"/api/track/{_id(3)}").json()
     for k in ["id", "name", "artists", "bpm", "camelot", "camelot_num", "camelot_letter",

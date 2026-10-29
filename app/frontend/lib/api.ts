@@ -1,10 +1,10 @@
-// API client. NEXT_PUBLIC_API_MODE=mock (default) uses the in-browser mock engine;
-// NEXT_PUBLIC_API_MODE=live calls the FastAPI backend at NEXT_PUBLIC_API_BASE.
+// API client. By default it calls the FastAPI backend at NEXT_PUBLIC_API_BASE.
+// NEXT_PUBLIC_API_MODE=mock switches to the in-browser mock engine (30 tracks) for offline demos.
 
 import { mockApi } from "./mock/engine";
 import type { EvalSummary, MixRequest, MixResponse, NextRequest, NextResponse, Track } from "./types";
 
-export const API_MODE = process.env.NEXT_PUBLIC_API_MODE === "live" ? "live" : "mock";
+export const API_MODE = process.env.NEXT_PUBLIC_API_MODE === "mock" ? "mock" : "live";
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -20,8 +20,10 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  /** Empty query -> featured tracks. */
   search(q: string): Promise<Track[]> {
-    return API_MODE === "mock" ? mockApi.search(q) : http(`/api/search?q=${encodeURIComponent(q)}`);
+    if (API_MODE === "mock") return mockApi.search(q);
+    return q.trim() ? http(`/api/search?q=${encodeURIComponent(q.trim())}`) : http("/api/featured");
   },
   track(id: string): Promise<Track> {
     return API_MODE === "mock" ? mockApi.track(id) : http(`/api/track/${encodeURIComponent(id)}`);

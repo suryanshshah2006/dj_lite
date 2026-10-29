@@ -6,16 +6,21 @@ dataset + FAISS index; ~1 minute) or directly with a small DataFrame for tests.
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 from djlite.retrieval import Recommender, load_configs, load_tracks
 from djlite.transitions import COMPONENTS
 
+from .search import SearchIndex
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+log = logging.getLogger("djlite.app")
 
 TRACK_FIELDS = ["id", "name", "album", "year", "duration_ms", "key", "mode", "energy",
                 "valence", "danceability", "acousticness", "instrumentalness", "speechiness",
@@ -32,26 +37,36 @@ def _num(v):
 
 class Engine:
     def __init__(self, tracks: pd.DataFrame, style: np.ndarray, rcfg: dict, tcfg: dict,
-                 settings: dict, popularity: np.ndarray | None = None):
+                 settings: dict, popularity: np.ndarray | None = None,
+                 search_index: SearchIndex | None = None):
         self.rec = Recommender(tracks, style, rcfg, tcfg)
         self.t = self.rec.tracks
         self.settings = settings
-        n = len(self.t)
         # Popularity proxy for search ranking: how many duplicate releases a song had.
-        self.popularity = popularity if popularity is not None else np.zeros(n)
-        self.name_lc = self.t["name"].str.lower().to_numpy(dtype=object)
-        self.artists_lc = np.array([" | ".join(a).lower() for a in self.t["artists"]], dtype=object)
-        self._name_s = pd.Series(self.name_lc)
-        self._art_s = pd.Series(self.artists_lc)
+        self.popularity = popularity if popularity is not None else np.zeros(len(self.t))
+        self.search_index = search_index
+        self._scan = None  # in-memory search fallback, built on first use
+        if len(self.t):  # build pandas' id hash table now, not on the first request (~0.8 s)
+            self.rec.id_to_idx.index.get_loc(self.t["id"].iloc[0])
 
     @classmethod
     def from_project(cls, settings: dict) -> "Engine":
         paths, rcfg, tcfg = load_configs()
         tracks, style = load_tracks(paths)
+        pa.default_memory_pool().release_unused()  # Arrow keeps ~0.7 GB of read buffers otherwise
+        db = PROJECT_ROOT / settings["search"]["db_path"]
+        if db.exists():
+            index = SearchIndex(db, tier_cap=settings["search"]["tier_cap"])
+            if index.n_tracks != len(tracks):
+                log.warning("search index has %d tracks, dataset %d: rebuild it with "
+                            "python -m app.backend.build_search_index", index.n_tracks, len(tracks))
+            index.search("warm up")  # pull the index pages into the OS cache
+            return cls(tracks, style, rcfg, tcfg, settings, search_index=index)
+        log.warning("%s missing; using slow in-memory search. Build it with "
+                    "python -m app.backend.build_search_index", db)
         dedup = pd.read_parquet(PROJECT_ROOT / paths["processed_dir"] / "dedup_map.parquet",
                                 columns=["kept_id"])
-        counts = dedup["kept_id"].value_counts()
-        pop = tracks["id"].map(counts).fillna(0).to_numpy(dtype=float)
+        pop = tracks["id"].map(dedup["kept_id"].value_counts()).fillna(0).to_numpy(dtype=float)
         return cls(tracks, style, rcfg, tcfg, settings, popularity=pop)
 
     # ---------- serialization ----------
@@ -92,19 +107,31 @@ class Engine:
 
     def search(self, q: str, limit: int | None = None) -> list[dict]:
         limit = limit or self.settings["search"]["limit"]
+        if self.search_index is not None:
+            ids = self.search_index.search(q, limit)
+            return [self.track_json(self.rec.id_to_idx[t]) for t in ids if t in self.rec.id_to_idx]
+        return self._search_scan(q, limit)
+
+    def _search_scan(self, q: str, limit: int) -> list[dict]:
+        """Substring scan over all names/artists; used when no FTS index is available."""
         tokens = [t for t in q.lower().split() if t]
         if not tokens:
             return []
+        if self._scan is None:
+            name_lc = self.t["name"].str.lower().to_numpy(dtype=object)
+            artists_lc = np.array([" | ".join(a).lower() for a in self.t["artists"]], dtype=object)
+            self._scan = (name_lc, artists_lc, pd.Series(name_lc), pd.Series(artists_lc))
+        name_lc, artists_lc, name_s, art_s = self._scan
         mask = np.ones(len(self.t), dtype=bool)
         for tok in tokens:  # every token must appear in the name or the artists
-            mask &= (self._name_s.str.contains(tok, regex=False)
-                     | self._art_s.str.contains(tok, regex=False)).to_numpy()
+            mask &= (name_s.str.contains(tok, regex=False)
+                     | art_s.str.contains(tok, regex=False)).to_numpy()
         idx = np.flatnonzero(mask)
         if len(idx) == 0:
             return []
         ql = q.lower().strip()
-        names = self.name_lc[idx]
-        arts = self.artists_lc[idx]
+        names = name_lc[idx]
+        arts = artists_lc[idx]
         score = (
             4.0 * (names == ql)
             + 2.0 * np.array([n.startswith(ql) for n in names])
@@ -118,6 +145,10 @@ class Engine:
 
     def track(self, track_id: str) -> dict:
         return self.track_json(self.index_of(track_id))
+
+    def featured(self) -> list[dict]:
+        ids = self.settings.get("featured") or []
+        return [self.track_json(self.rec.id_to_idx[t]) for t in ids if t in self.rec.id_to_idx]
 
     def next_tracks(self, seed_id: str, n: int, alpha: float) -> dict:
         i = self.index_of(seed_id)

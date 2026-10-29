@@ -13,20 +13,22 @@ app/
 
 ```powershell
 cd app/frontend
-npm install          # first time only
-npm run dev          # http://localhost:3000
+npm install                  # first time only
+npm run build; npm start     # production build, http://localhost:3000 (recommended)
+npm run dev                  # dev server with hot reload
 ```
 
-The frontend talks to either a **mock API** (default; 30 real tracks in
-`lib/mock/tracks.json`, scoring mirrored in `lib/mock/engine.ts`) or the **live backend**:
+By default the frontend calls the **live backend** at `http://localhost:8000`
+(override with `NEXT_PUBLIC_API_BASE`). For offline demos without the backend, switch to the
+**mock API** (30 real tracks in `lib/mock/tracks.json`, scoring mirrored in `lib/mock/engine.ts`):
 
 ```powershell
 # app/frontend/.env.local
-NEXT_PUBLIC_API_MODE=live
-NEXT_PUBLIC_API_BASE=http://localhost:8000
+NEXT_PUBLIC_API_MODE=mock
 ```
 
-Restart `npm run dev` after changing `.env.local`.
+`NEXT_PUBLIC_*` values are baked in at build time: rebuild (or restart `npm run dev`) after
+changing `.env.local`.
 
 ## Backend
 
@@ -34,11 +36,21 @@ Run from the project root with the project venv active (`.venv\Scripts\Activate.
 
 ```powershell
 uv pip install -r app/backend/requirements.txt   # first time only
+python -m app.backend.build_search_index          # first time + whenever track_features changes (~75 s)
 uvicorn app.backend.main:app --port 8000
 ```
 
-At startup it loads the track features, style vectors and FAISS index once (~1.5 GB RAM,
-about a minute). Tests use a small synthetic fixture and never load the full dataset:
+At startup it loads the track features, style vectors and FAISS index once: about 25 s and
+~2.3 GB RAM. `app/backend/__init__.py` pins OpenBLAS/OpenMP to one thread; with the default of
+one thread per core the bundled BLAS copies and faiss's workers commit an extra ~3 GB for no
+measurable speed-up on single-query search.
+
+Search uses a SQLite FTS5 index over title + artists (`app/backend/cache/search.sqlite`,
+~215 MB, gitignored): exact title matches first, then title prefixes, then artist matches,
+then any-field matches; ties broken by a popularity proxy (number of duplicate releases).
+Queries take ~1–10 ms. Without the index the backend falls back to a slow in-memory scan.
+
+Tests use a small synthetic fixture and never load the full dataset:
 
 ```powershell
 python -m pytest app/backend/tests -q
@@ -49,6 +61,7 @@ python -m pytest app/backend/tests -q
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/search?q=` | Top 20 tracks by name or artist |
+| GET | `/api/featured` | Curated tracks for the Home page (`featured:` in `settings.yaml`) |
 | GET | `/api/track/{id}` | Track details (BPM, Camelot, energy, valence, …) |
 | POST | `/api/next` | `{seed_id, n, alpha}` → next tracks with score breakdown |
 | POST | `/api/mix` | `{seed_ids, arc, alpha, length}` → arc-following mix (`generator: greedy_v0`) |

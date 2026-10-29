@@ -92,7 +92,8 @@ function EvalTable({ rows, source, figure }: { rows: EvalRow[]; source?: string;
     <div className="space-y-8">
       {pools.map((pool) => (
         <div key={pool} className="overflow-x-auto rounded-2xl border border-border">
-          <table className="w-full min-w-[640px] text-sm">
+          {/* no ligatures: Manrope would render the "(c)" method label as © */}
+          <table className="w-full min-w-[640px] text-sm [font-variant-ligatures:none]">
             <caption className="bg-surface px-4 py-3 text-left text-sm font-bold">
               {pool === "labeled" ? "Primary: candidates restricted to genre-labeled tracks" : "Secondary: full catalogue"}
             </caption>

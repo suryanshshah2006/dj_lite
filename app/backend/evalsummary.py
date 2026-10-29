@@ -1,4 +1,4 @@
-"""Read finished evaluation reports for the How It Works page (read-only)."""
+﻿"""Read finished evaluation reports for the How It Works page (read-only)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIGURE = "pareto_alpha.png"
+ORDER = {m: k for k, m in enumerate(["transition", "audio", "relevance", "full", "random"])}
 
 
 def _f(v):
@@ -37,6 +38,8 @@ def eval_summary(settings: dict, root: Path = PROJECT_ROOT) -> dict:
     if v2.exists():
         df = pd.read_csv(v2)
         main = df[(df["method"] != "full") | (df["is_d"].astype(str) == "True")]
+        main = main.sort_values("method", key=lambda m: m.map(ORDER).fillna(len(ORDER)),
+                                kind="stable")
         rows = [{
             "pool": r["pool"],
             "label": labels.get(r["method"], r["method"]),
@@ -46,7 +49,7 @@ def eval_summary(settings: dict, root: Path = PROJECT_ROOT) -> dict:
             "trans_hi": float(r["trans_hi"]), "dbpm": float(r["dbpm"]), "ild": float(r["ild"]),
             "artist_rep": float(r["artist_rep"]),
         } for _, r in main.iterrows()]
-        return {"available": True, "source": str(v2.relative_to(root)), "rows": rows,
+        return {"available": True, "source": v2.relative_to(root).as_posix(), "rows": rows,
                 "figure_url": figure_url}
 
     if v1.exists():
@@ -60,7 +63,7 @@ def eval_summary(settings: dict, root: Path = PROJECT_ROOT) -> dict:
             "ild": float(r.get("ild_mean", float("nan"))),
             "artist_rep": float(r.get("artist_rep_mean", float("nan"))),
         } for _, r in df.iterrows()]
-        return {"available": True, "source": str(v1.relative_to(root)), "rows": rows,
+        return {"available": True, "source": v1.relative_to(root).as_posix(), "rows": rows,
                 "figure_url": figure_url}
 
     return {"available": False, "rows": [], "figure_url": figure_url}

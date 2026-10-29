@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo, LogoMark } from "./Logo";
-import { API_MODE } from "@/lib/api";
 
 const NAV = [
   { href: "/", label: "Home", icon: HomeIcon },
@@ -39,9 +38,6 @@ export function Sidebar() {
         <div className="mt-auto rounded-xl border border-border bg-surface-2 p-3 text-xs text-text-2">
           <p className="font-semibold text-text">Transition-aware mixes</p>
           <p className="mt-1 leading-relaxed">Key, tempo and energy-aware playlists built from audio features.</p>
-          {API_MODE === "mock" && (
-            <p className="mt-2 inline-flex rounded-full bg-amber/15 px-2 py-0.5 font-semibold text-amber">Mock data</p>
-          )}
         </div>
       </aside>
 

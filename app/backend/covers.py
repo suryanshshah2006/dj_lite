@@ -64,12 +64,13 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
     async def wait(self) -> None:
+        # Callers queue on the (FIFO) lock; spacing is measured from each actual release,
+        # so a late wake-up delays the next caller instead of bunching the two together.
         async with self._lock:
-            now = self.clock()
-            delay = self._next - now
-            self._next = max(now, self._next) + self.interval
-        if delay > 0:
-            await asyncio.sleep(delay)
+            # asyncio may fire a timer up to one clock tick early (~16 ms on Windows): re-check.
+            while (delay := self._next - self.clock()) > 0:
+                await asyncio.sleep(delay)
+            self._next = self.clock() + self.interval
 
 
 class CoverCache:

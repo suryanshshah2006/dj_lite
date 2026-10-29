@@ -80,6 +80,10 @@ def create_app(engine_factory: Callable[[dict], Engine] | None = None,
     def search(request: Request, q: str = Query(min_length=1, max_length=200)):
         return engine(request).search(q)
 
+    @app.get("/api/featured")
+    def featured(request: Request):
+        return engine(request).featured()
+
     @app.get("/api/track/{track_id}")
     def track(request: Request, track_id: str):
         try:
