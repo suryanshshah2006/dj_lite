@@ -163,7 +163,8 @@ def bootstrap(df: pd.DataFrame, group: list[str], bcfg: dict, metrics=METRICS) -
             boot = np.divide(num, den, out=np.full(len(C), np.nan), where=den > 0)
             rec[col] = boot[0]
             rec[f"{col}_lo"], rec[f"{col}_hi"] = np.nanpercentile(boot[1:], [lo_q, hi_q])
-        rec["seeds_with_label"] = float(np.mean(~np.isnan(g["genre_agree"].to_numpy(float))))
+        if "genre_agree" in g:
+            rec["seeds_with_label"] = float(np.mean(~np.isnan(g["genre_agree"].to_numpy(float))))
         out.append(rec)
     return pd.DataFrame(out)
 
@@ -392,9 +393,68 @@ def report_5_1(df: pd.DataFrame, gcfg: dict, n_seeds: int, out_base) -> str:
     return "\n".join(md)
 
 
+def run_lengths(rec, lab, seeds, gcfg, primary, lengths=(12, 24)) -> pd.DataFrame:
+    """greedy_v0 and beam_v1 at several N with the configured (final) defaults; both
+    generators and all lengths share each seed's pool."""
+    ev = gcfg["evaluation"]
+    cap = gcfg["constraints"]["max_dbpm"]
+    rows, t0 = [], time.time()
+    for n_done, i in enumerate(seeds, 1):
+        i = int(i)
+        pool = G.build_pool(rec, [i], **G.pool_kwargs(gcfg, need_dbpm=cap is not None))
+        for arc_name, pts in gcfg["arcs"].items():
+            for n in lengths:
+                target = G.resample_arc(pts, n)
+                for gen in G.GENERATORS:
+                    out = G.generate(rec, [i], target, gcfg, generator=gen, pool=pool)
+                    m = playlist_metrics(rec, pool, out["seq"], target, lab, i, primary,
+                                         ev["harmonic_compatible"], out["alpha"], out["gamma"],
+                                         seed_pos=out["seed_pos"])
+                    m["objective"] = G.objective(pool, out["seq"], target, out["alpha"],
+                                                 out["gamma"], lam=out["lam"], tau=out["tau"],
+                                                 seed_pos=out["seed_pos"])
+                    rows.append({"seed_idx": i, "arc": arc_name, "table": f"N={n}",
+                                 "method": gen, **m, "runtime_ms": out["total_ms"]})
+        if n_done % 25 == 0 or n_done == len(seeds):
+            el = time.time() - t0
+            print(f"  {n_done}/{len(seeds)} seeds, {el:.0f}s elapsed, "
+                  f"~{el / n_done * (len(seeds) - n_done):.0f}s left", file=sys.stderr, flush=True)
+    return pd.DataFrame(rows)
+
+
+METRICS_LEN = [m for m in METRICS_51 if m[0] != "genre_agree"] + [("objective", "objective", 3)]
+
+
+def report_lengths(df: pd.DataFrame, gcfg: dict, n_seeds: int, out_base) -> str:
+    bc = gcfg["evaluation"]["bootstrap"]
+    pooled = bootstrap(df, ["table", "method"], bc, METRICS_LEN)
+    # paired per-seed differences beam - greedy (mean over arcs), bootstrapped
+    cols = [c for c, _, _ in METRICS_LEN]
+    per_seed = df.groupby(["table", "method", "seed_idx"])[cols].mean()
+    diffs = []
+    for n in df["table"].unique():
+        d = (per_seed.loc[(n, "beam_v1")] - per_seed.loc[(n, "greedy_v0")]).reset_index()
+        diffs.append(d.assign(table=n, method="beam - greedy"))
+    diff = bootstrap(pd.concat(diffs), ["table", "method"], bc, METRICS_LEN)
+    md = ["# Generator length check: greedy_v0 vs beam_v1 at N = 12 and N = 24", "",
+          f"{n_seeds} genre-labeled seeds (same as Steps 5 and 5.1) x {len(gcfg['arcs'])} arcs; "
+          f"final defaults for both generators and both lengths: {defaults_line(gcfg)}. "
+          f"objective = the configured objective (incl. the weak-link penalty). "
+          f"{bc['n_resamples']} bootstrap resamples over seeds, 95% CIs (each seed = mean over "
+          "the 4 arcs); differences are paired per seed.", ""]
+    md += table(pooled.assign(method=pooled["table"] + ", " + pooled["method"]),
+                "Per generator and length", "method", True, METRICS_LEN)
+    md += table(diff.assign(method=diff["table"] + ": beam - greedy"),
+                "Paired difference (beam - greedy)", "method", True, METRICS_LEN)
+    pd.concat([pooled.assign(scope="pooled"), diff.assign(scope="diff")]) \
+        .to_csv(f"{out_base}.csv", index=False)
+    return "\n".join(md)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--suite", choices=["step5", "step5_1", "examples"], default="step5_1")
+    ap.add_argument("--suite", choices=["step5", "step5_1", "lengths", "examples"],
+                    default="step5_1")
     ap.add_argument("--n-seeds", type=int, help="override evaluation.n_seeds (debugging)")
     ap.add_argument("--out-name", help="default: eval_<suite>")
     args = ap.parse_args()
@@ -429,6 +489,15 @@ def main() -> None:
     seeds = np.random.default_rng(ev["random_seed"]).choice(labeled, n, replace=False)
     print(f"loaded in {time.time() - t0:.0f}s; {len(labeled):,} labeled tracks, {n} seeds",
           flush=True)
+
+    if args.suite == "lengths":
+        df = run_lengths(rec, lab, seeds, gcfg, primary)
+        md = report_lengths(df, gcfg, n, rdir / out_name)
+        (rdir / f"{out_name}.md").write_text(md, encoding="utf-8")
+        df.to_parquet(rdir / f"{out_name}_per_playlist.parquet", index=False)
+        print(md)
+        print(f"total {time.time() - t0:.0f}s")
+        return
 
     if args.suite == "step5_1":
         df = run_5_1(rec, lab, seeds, gcfg, primary)
