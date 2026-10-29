@@ -451,9 +451,89 @@ def report_lengths(df: pd.DataFrame, gcfg: dict, n_seeds: int, out_base) -> str:
     return "\n".join(md)
 
 
+HELDOUT_RANDOM_SEED = 20261029  # fixed before the run; never used for tuning
+METRICS_HO = [m for m in METRICS_51]
+
+
+def heldout_seeds(labeled: np.ndarray, tuning: np.ndarray, n: int) -> np.ndarray:
+    pool = np.setdiff1d(labeled, tuning)
+    out = np.random.default_rng(HELDOUT_RANDOM_SEED).choice(pool, n, replace=False)
+    assert not set(out.tolist()) & set(tuning.tolist())
+    return out
+
+
+def run_heldout(rec, lab, seed_sets: dict, gcfg, primary) -> pd.DataFrame:
+    """Final configuration, no tuning: beam_v1, greedy_v0 and the two reorderings of the
+    beam's tracks, at N = evaluation.length, on each seed set."""
+    ev = gcfg["evaluation"]
+    cap = gcfg["constraints"]["max_dbpm"]
+    rows, t0, done, total = [], time.time(), 0, sum(len(s) for s in seed_sets.values())
+    for set_name, seeds in seed_sets.items():
+        for i in seeds:
+            i = int(i)
+            pool = G.build_pool(rec, [i], **G.pool_kwargs(gcfg, need_dbpm=cap is not None))
+            for arc_name, pts in gcfg["arcs"].items():
+                target = G.resample_arc(pts, ev["length"])
+                b = G.generate(rec, [i], target, gcfg, generator="beam_v1", pool=pool)
+                g = G.generate(rec, [i], target, gcfg, generator="greedy_v0", pool=pool)
+                sp = b["seed_pos"]
+                rng = np.random.default_rng(ev["random_seed"] * 1_000_003 + i)
+                runs = [("beam_v1 (final)", b["seq"], b["total_ms"]),
+                        ("greedy_v0", g["seq"], g["total_ms"]),
+                        ("beam tracks, random order", G.random_order(b["seq"], rng, sp),
+                         b["total_ms"]),
+                        ("beam tracks, energy-sorted", G.energy_sorted(b["seq"], pool, target, sp),
+                         b["total_ms"])]
+                for method, seq, ms in runs:
+                    m = playlist_metrics(rec, pool, seq, target, lab, i, primary,
+                                         ev["harmonic_compatible"], b["alpha"], b["gamma"],
+                                         seed_pos=sp)
+                    rows.append({"set": set_name, "seed_idx": i, "arc": arc_name,
+                                 "method": method, **m, "runtime_ms": ms})
+            done += 1
+            if done % 25 == 0 or done == total:
+                el = time.time() - t0
+                print(f"  {done}/{total} seeds ({set_name}), {el:.0f}s elapsed, "
+                      f"~{el / done * (total - done):.0f}s left", file=sys.stderr, flush=True)
+    return pd.DataFrame(rows)
+
+
+def report_heldout(df: pd.DataFrame, gcfg: dict, sizes: dict, out_base) -> str:
+    bc = gcfg["evaluation"]["bootstrap"]
+    parts = [bootstrap(df[df["set"] == s], ["method"], bc, METRICS_HO).assign(set=s)
+             for s in df["set"].unique()]
+    summ = pd.concat(parts, ignore_index=True)
+    order = ["beam_v1 (final)", "greedy_v0", "beam tracks, random order",
+             "beam tracks, energy-sorted"]
+    summ["k"] = summ["method"].map({m: k for k, m in enumerate(order)})
+    summ = summ.sort_values(["k", "set"], ascending=[True, False])
+    summ["row"] = summ["method"] + " — " + summ["set"]
+    md = ["# Held-out validation of the final generator", "",
+          f"Final configuration, no tuning: {defaults_line(gcfg)}; N = "
+          f"{gcfg['evaluation']['length']}, 4 arc presets. Tuning set = the {sizes['tuning']} seeds "
+          f"used in Steps 5 / 5.1 (random_seed {gcfg['evaluation']['random_seed']}); held-out = "
+          f"{sizes['held-out']} other genre-labeled seeds (random_seed {HELDOUT_RANDOM_SEED}, "
+          "disjoint by construction; ids in reports/heldout_seeds.csv). Both sets run in the same "
+          f"process with the same code. {bc['n_resamples']} bootstrap resamples over seeds, 95% CIs "
+          "(each seed = mean over the 4 arcs).", ""]
+    md += table(summ, "Main table: tuning set vs held-out set", "row", True, METRICS_HO)
+    # compact side-by-side for the headline metrics
+    key = [("trans_mean", 3), ("trans_min", 3), ("harm_compat", 1), ("dbpm_max", 2),
+           ("arc_mae_all", 3), ("genre_agree", 3)]
+    md += ["### Side by side (tuning / held-out)", "",
+           "| method | " + " | ".join(c for c, _ in key) + " |", "|---|" + "---:|" * len(key)]
+    for m in order:
+        t = summ[(summ["method"] == m) & (summ["set"] == "tuning")].iloc[0]
+        h = summ[(summ["method"] == m) & (summ["set"] == "held-out")].iloc[0]
+        md.append(f"| {m} | " + " | ".join(f"{t[c]:.{d}f} / {h[c]:.{d}f}" for c, d in key) + " |")
+    md.append("")
+    summ.drop(columns=["k", "row"]).to_csv(f"{out_base}.csv", index=False)
+    return "\n".join(md)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--suite", choices=["step5", "step5_1", "lengths", "examples"],
+    ap.add_argument("--suite", choices=["step5", "step5_1", "lengths", "heldout", "examples"],
                     default="step5_1")
     ap.add_argument("--n-seeds", type=int, help="override evaluation.n_seeds (debugging)")
     ap.add_argument("--out-name", help="default: eval_<suite>")
@@ -489,6 +569,25 @@ def main() -> None:
     seeds = np.random.default_rng(ev["random_seed"]).choice(labeled, n, replace=False)
     print(f"loaded in {time.time() - t0:.0f}s; {len(labeled):,} labeled tracks, {n} seeds",
           flush=True)
+
+    if args.suite == "heldout":
+        held = heldout_seeds(labeled, seeds, n)
+        t = rec.tracks
+        pd.DataFrame({
+            "track_id": t["id"].to_numpy()[held],
+            "name": t["name"].to_numpy()[held],
+            "primary_artist": [a[0] if len(a) else "" for a in t["artists"].to_numpy()[held]],
+            "year": t["year"].to_numpy()[held],
+            "genres": ["|".join(sorted(lab[i])) for i in held],
+        }).to_csv(rdir / "heldout_seeds.csv", index=False)
+        df = run_heldout(rec, lab, {"tuning": seeds, "held-out": held}, gcfg, primary)
+        md = report_heldout(df, gcfg, {"tuning": len(seeds), "held-out": len(held)},
+                            rdir / out_name)
+        (rdir / f"{out_name}.md").write_text(md, encoding="utf-8")
+        df.to_parquet(rdir / f"{out_name}_per_playlist.parquet", index=False)
+        print(md)
+        print(f"total {time.time() - t0:.0f}s")
+        return
 
     if args.suite == "lengths":
         df = run_lengths(rec, lab, seeds, gcfg, primary)

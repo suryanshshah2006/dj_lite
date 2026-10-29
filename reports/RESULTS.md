@@ -1,16 +1,20 @@
 # DJ-Lite: final results (frozen)
 
 Transition-aware playlist recommender built only from precomputed Spotify audio features
-(no raw audio). This file collects the final numbers from Steps 3, 5 and 5.1 in one place;
-each section names the report it comes from. All intervals are 95% bootstrap CIs over seeds.
+(no raw audio). This file collects the final numbers from Steps 3, 5 and 5.1 and their
+held-out validation in one place; each section names the report it comes from. All
+intervals are 95% bootstrap CIs over seeds.
 
-**Headline.** The final generator (beam search, energy-stratified pool, weak-link penalty,
-3 BPM cap, seed at its best-fit arc position) builds 12-track mixes with a mean transition
-score of 0.952 and a worst transition of 0.909, 99.8% harmonically compatible transitions,
-a largest BPM jump of 1.8 BPM and an energy-arc error of 0.092, in ~1.3 s on a laptop CPU
-(500 seeds x 4 arcs, section 4.4). Ordering is what matters most: the same tracks in random
-order have a worst transition of 0.58 (section 3.1). Beam beats greedy consistently but
-modestly, by the same margin at 12 and 24 tracks.
+**Headline (held-out, section 5).** On 500 seeds never used for tuning, the final generator
+(beam search, energy-stratified pool, weak-link penalty, 3 BPM cap, seed at its best-fit arc
+position) builds 12-track mixes with a mean transition score of 0.951 and a worst
+transition of 0.909, 99.8% harmonically compatible transitions, a largest BPM jump of
+1.8 BPM and an energy-arc error of 0.106, in ~1.2 s on a laptop CPU. The transition numbers
+match the tuning set exactly; the arc error is 0.014 worse than on the tuning set (0.092).
+Ordering is what matters most: the same tracks in random order have a worst transition of
+0.61. Beam beats greedy consistently but modestly, by the same margin on both seed sets and
+at 12 and 24 tracks. Search returns the original artist first for 10 of 20 held-out
+famous-song queries (12/20 on the tuning queries).
 
 ---
 
@@ -191,7 +195,65 @@ than greedy (CIs exclude zero) at ~+10-25 ms.
 
 ---
 
-## 5. Final configuration
+## 5. Held-out validation — `reports/eval_heldout.md`, `reports/heldout_seeds.csv`
+
+All defaults above were chosen on the tuning set (the 500 seeds of Steps 5 / 5.1 and the 20
+search queries). To check them, the final configuration was run **once, with no tuning**, on
+data never used to choose anything.
+
+### 5.1 Generator: 500 held-out seeds
+
+500 genre-labeled seeds drawn with a new fixed random seed (20261029) from the 6,750 labeled
+tracks that are not tuning seeds (disjoint by construction; IDs, names and genres in
+`reports/heldout_seeds.csv`). Final configuration, N = 12, 4 arcs; both seed sets were run in
+the same process with the same code, so the tuning column matches section 4.4.
+
+| method | set | transition mean | transition min | % harmonic | \|dBPM\| max | arc MAE incl. seed | genre agree |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **beam_v1 (final)** | tuning | 0.952 [0.950, 0.953] | 0.909 [0.907, 0.911] | 99.8 | 1.81 [1.77, 1.85] | 0.092 [0.086, 0.099] | 0.199 [0.149, 0.249] |
+| **beam_v1 (final)** | **held-out** | **0.951** [0.950, 0.953] | **0.909** [0.907, 0.911] | **99.8** | **1.80** [1.76, 1.83] | **0.106** [0.099, 0.113] | 0.217 [0.154, 0.286] |
+| greedy_v0 | tuning | 0.946 [0.944, 0.947] | 0.901 [0.899, 0.904] | 99.7 | 1.85 | 0.106 [0.099, 0.112] | 0.173 |
+| greedy_v0 | held-out | 0.946 [0.944, 0.947] | 0.902 [0.899, 0.904] | 99.7 | 1.84 | 0.120 [0.112, 0.128] | 0.196 |
+| beam tracks, random order | tuning | 0.817 | 0.613 | 66.0 | 4.29 | 0.169 | — |
+| beam tracks, random order | held-out | 0.815 | 0.612 | 65.4 | 4.28 | 0.176 | — |
+| beam tracks, energy-sorted | tuning | 0.870 | 0.692 | 76.4 | 3.69 | 0.090 | — |
+| beam tracks, energy-sorted | held-out | 0.864 | 0.684 | 75.0 | 3.73 | 0.104 | — |
+
+(Genre agreement of the reordered baselines equals the beam's: same tracks.)
+
+- **Confirmed:** every transition metric (mean 0.951, worst 0.909, 99.8% harmonic, largest
+  jump 1.8 BPM) is the same on held-out seeds; beam beats greedy by the same margin
+  (worst transition +0.008, arc MAE -0.014 on both sets); ordering still matters as much
+  (random order: worst transition 0.61).
+- **Revised:** arc MAE is 0.106 on held-out seeds, not 0.092. Greedy and the energy-sorted
+  baseline worsen by the same ~0.014, so this looks like the held-out seeds being harder to
+  fit to the four arcs rather than the tuned settings overfitting, but either way **0.106 is
+  the estimate to quote**.
+- Runtime 1.24 s per 12-track mix.
+
+### 5.2 Search: 20 held-out famous-song queries
+
+20 new queries, never used for tuning: a fixed priority list spread over eras and genres,
+with no song from the tuning candidates and no artist from the tuning set, filtered by
+existence only (first 20 whose original recording exists under the exact title). The first
+40 candidates yielded only 15, so the list was extended once with 25 more candidates, fixed
+before any was ranked. Evaluated once with the configured ranking
+(`python -m app.backend.search_regression --heldout`).
+
+| ranking | tuning set (20) | held-out (20) |
+|---|---:|---:|
+| **configured: co-artist prominence + original-release boost (>= 100)** | **12/20** | **10/20** |
+| co-artist prominence, no boost | 11/20 | 9/20 |
+| track-count prominence (the first specification) | 4/20 | 7/20 |
+
+The configured ranking stays best on held-out queries and in the same order of choices, but
+its pass rate drops from 60% to **50%**. Held-out misses: Like a Prayer, Crazy, Toxic,
+September, Thunderstruck, Mr. Blue Sky, Hound Dog, Purple Haze, Johnny B. Goode, Good
+Vibrations (mostly covers, re-recordings or same-title songs by artists with more co-artists).
+
+---
+
+## 6. Final configuration
 
 `configs/generator.yaml` (used by the app's `/api/mix`):
 
@@ -208,7 +270,8 @@ Other components: transition scorer v0.1 (`configs/transitions.yaml`: harmonic 0
 relevance 0.35 audio + 0.50 style + 0.15 era, renormalized to 0.70 / 0.30 when a style
 vector is missing (`configs/retrieval.yaml`); FAISS IndexFlatIP, K = 500 for next-track
 lists. Web app search: SQLite FTS5, title tiers then artist, tie-break by artist co-artist
-prominence plus an original-release boost (20-song regression set: 12/20 top-1 correct).
+prominence plus an original-release boost (top-1 original artist: 12/20 on the tuning
+queries, 10/20 on held-out queries).
 
 Runtime (laptop CPU, single-threaded BLAS/OpenMP, backend ~2.3 GB RAM, ~25 s startup):
 12-track mix 1.26 s mean in the evaluation and 1.2-1.4 s via the API alone (target < 2 s);
@@ -217,7 +280,7 @@ Runtime (laptop CPU, single-threaded BLAS/OpenMP, backend ~2.3 GB RAM, ~25 s sta
 
 ---
 
-## 6. Figures
+## 7. Figures
 
 | figure | path |
 |---|---|
@@ -229,7 +292,7 @@ Runtime (laptop CPU, single-threaded BLAS/OpenMP, backend ~2.3 GB RAM, ~25 s sta
 
 ---
 
-## 7. Known limitations
+## 8. Known limitations
 
 **Data and labels**
 - No genre, user or playlist data in the main dataset; genre agreement uses a separate
@@ -257,17 +320,28 @@ Runtime (laptop CPU, single-threaded BLAS/OpenMP, backend ~2.3 GB RAM, ~25 s sta
   the first track (set `seed_position: start` to change).
 
 **Evaluation**
-- Defaults (gamma, lambda, cap, stratification, seed placement, search threshold) were
-  chosen on the same 500 seeds / 20 search queries they are reported on; there is no
-  held-out confirmation set. lambda followed a rule fixed in advance; the others were
-  chosen by inspection of the tables above.
+- Tuned on the tuning set (500 seeds of Steps 5 / 5.1, random_seed 7): gamma 0.25 (from the
+  Step 5 gamma ablation), the 3 BPM cap (Step 5 extra ablation), lambda 2 (rule fixed before
+  the Step 5.1 run), the 5-band energy-stratified pool and best_fit seed placement (by
+  inspection of the Step 5.1 tables); beam width 20 and alpha 0.5 were set earlier (alpha
+  from the Step 3 sweep on the labeled pool, a different protocol). Tuned on the 20 search
+  queries: co-artist prominence and the original-release boost threshold (100).
+- Held-out check (section 5, run once, no tuning): **confirms** the transition results
+  (mean 0.951, worst 0.909, 99.8% harmonic, largest jump 1.8 BPM; identical to the tuning
+  set) and beam's margin over greedy; **revises** arc MAE from 0.092 to 0.106 (greedy and
+  the energy-sorted baseline shift equally, so likely harder seeds rather than overfitting).
+  Search: the chosen ranking stays best on held-out queries but drops from 12/20 to 10/20.
+  Quote the held-out figures.
+- The Step 3 alpha sweep, the Step 5 ablations and the Step 5.1 comparisons themselves have
+  no held-out replication; only the final configuration was re-run.
 - Single-seed playlists only; multi-seed sets are supported but not evaluated.
-- Search: 12/20 famous songs return the original artist first; the remaining misses are
-  covers or same-title songs by artists with larger catalogues or more co-artists.
+- Search misses (8/20 tuning, 10/20 held-out) are mostly covers, re-recordings or
+  same-title songs by artists with larger catalogues or more co-artists; many famous
+  originals are not in the dataset at all (only 20 of 65 held-out candidates were).
 
 ---
 
-## 8. Reproduce
+## 9. Reproduce
 
 ```powershell
 # from the project root, venv active; single-threaded BLAS/OpenMP keeps RAM ~2.5 GB
@@ -277,6 +351,9 @@ python -m djlite.evaluate --version v2 --by-source --replot  # label-source spli
 python -m djlite.evaluate_generator --suite step5            # Step 5 (eval_step5.*)
 python -m djlite.evaluate_generator --suite step5_1          # Step 5.1 (eval_step5_1.*)
 python -m djlite.evaluate_generator --suite lengths          # N = 12 vs 24 (eval_lengths.*)
+python -m djlite.evaluate_generator --suite heldout          # held-out validation (eval_heldout.*, heldout_seeds.csv)
 python -m djlite.evaluate_generator --suite examples         # example figure, final defaults
+python -m app.backend.search_regression                      # search, tuning queries (all rankings)
+python -m app.backend.search_regression --heldout            # search, held-out queries (configured ranking)
 python -m pytest -q tests app/backend/tests
 ```
