@@ -1,19 +1,28 @@
-# Step 5: arc-following playlist generator (src/djlite/generator.py).
-# Objective summed over positions 2..N (position 1 is the first seed):
-#   alpha * relevance(track, seed set) + (1 - alpha) * transition(prev, track)
+# Arc-following playlist generator (src/djlite/generator.py), Steps 5 and 5.1.
+# Objective summed over every non-seed position i (T_i = transition between track i and its
+# placed neighbour; each transition counted once):
+#   alpha * relevance(track, seed set) + (1 - alpha) * T_i - lambda * max(0, tau - T_i)
 #   + gamma * arc_fit(track, e_i),   arc_fit = 1 - |energy - e_i|
 
 pool:
-  per_seed_k: 2000       # FAISS candidates per seed (combined audio+style index)
-  k: 2000                # pool cap: top-k of the union by relevance to the seed set
+  per_seed_k: 2000              # FAISS candidates per seed (combined audio+style index)
+  k: 2000                       # pool size
+  energy_bands: 5               # split k over energy-quantile bands (null: top-k by relevance);
+                                # Step 5.1: lower arc MAE (Sunset 0.115 -> 0.102) at ~+90 ms
+  stratified_retrieve_k: 10000  # FAISS candidates per seed when stratifying (band depth)
 
 objective:
-  alpha: 0.5             # relevance vs transition (reviewed in eval v2: knee at 0.5-0.75)
-  gamma: 0.5             # arc-fit weight
+  alpha: 0.5                    # relevance vs transition (eval v2 knee at 0.5-0.75)
+  gamma: 0.25                   # arc-fit weight (Step 5: 0.5; 0.25 trades a little arc fit
+                                # for a much better worst transition)
+  weak_link: {lambda: 2.0, tau: 0.85}   # lambda by the Step 5.1 pre-registered rule
 
 constraints:
-  max_per_artist: 1      # only 1 is supported (each pick blocks all its artists)
-  max_dbpm: null         # optional cap on octave-aligned |dBPM| per transition, e.g. 6
+  max_per_artist: 1             # only 1 is supported (each pick blocks all its artists)
+  max_dbpm: 3                   # cap on octave-aligned |dBPM| per transition (null: off)
+
+seed_position: best_fit         # start | best_fit (arc position closest to the seed's energy);
+                                # Step 5.1: whole-playlist arc MAE 0.106 -> 0.092, same transitions
 
 beam:
   width: 20
@@ -26,10 +35,12 @@ arcs:
   slow_build: [0.25, 0.35, 0.45, 0.55, 0.68, 0.8, 0.92]
   sunset: [0.75, 0.68, 0.6, 0.5, 0.42, 0.33, 0.25]
 
+# Step 5 evaluation (python -m djlite.evaluate_generator --suite step5)
 evaluation:
   n_seeds: 500           # random genre-labeled seeds (labels: eval v2 ID + name matching)
   random_seed: 7
   length: 12
+  objective: {alpha: 0.5, gamma: 0.5}   # Step 5 defaults (pinned so the suite reproduces)
   harmonic_compatible: 0.9   # transition counts as harmonically compatible if the Camelot
                              # score >= this (same key, +-1 on the wheel, relative major/minor)
   bootstrap: {n_resamples: 1000, ci: 0.95, random_seed: 0}
@@ -39,3 +50,15 @@ evaluation:
     alpha: [0.5, 0.75]
     max_dbpm: [null, 6, 3]   # extra: does a hard cap remove the worst transitions?
   example_seed: 1LPGNTuBxFsfy0KFtU4WAW   # Duke Dumont - Worship (example-playlist figure)
+
+# Step 5.1 evaluation (python -m djlite.evaluate_generator --suite step5_1): same seeds and
+# arcs; every configuration of a seed shares that seed's two pools (plain, stratified).
+evaluation_5_1:
+  lambdas: [0, 0.5, 1, 2]
+  old_defaults: {gamma: 0.5, max_dbpm: null}   # Step 5 (lambda ablation baseline)
+  new_defaults: {gamma: 0.25, max_dbpm: 3}
+  energy_bands: 5
+  long_length: 24
+  # Fixed before seeing results: best lambda = highest mean min-transition under the new
+  # defaults whose arc MAE is within this of lambda = 0.
+  lambda_rule_max_mae_increase: 0.01

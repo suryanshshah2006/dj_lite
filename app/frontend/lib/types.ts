@@ -71,7 +71,12 @@ export interface MixRequest {
   alpha?: number;
   length?: number;
   generator?: "beam_v1" | "greedy_v0"; // backend default: beam_v1
+  seed_position?: SeedPosition;
 }
+
+/** "start": the seed opens the mix; "best_fit": it sits where the arc's target energy is
+ *  closest to its own, and the mix is built in both directions from it. */
+export type SeedPosition = "start" | "best_fit";
 
 export interface MixStep {
   track: Track;
@@ -80,13 +85,18 @@ export interface MixStep {
   /** Transition from the previous track into this one (null for the first track). */
   transition: TransitionBreakdown | null;
   arc_fit: number;
-  objective: number;
+  objective: number | null; // null for the seed (it is placed, not scored)
+  is_seed?: boolean;
 }
 
 export interface MixResponse {
   generator: string; // "beam_v1" | "greedy_v0" ("... (mock)" in mock mode)
   alpha: number;
   gamma?: number; // arc-fit weight
+  weak_link_lambda?: number; // penalty on transitions below tau
+  max_dbpm?: number | null; // |dBPM| cap per transition
+  seed_position?: SeedPosition;
+  seed_index?: number; // position of the seed in `steps`
   beam_width?: number | null; // beam_v1 only
   pool_size?: number;
   runtime_ms?: number; // server-side generation time

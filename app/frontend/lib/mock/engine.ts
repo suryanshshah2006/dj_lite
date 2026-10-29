@@ -152,7 +152,7 @@ export const mockApi = {
     const first = seeds[0];
     const steps: MixStep[] = [{
       track: first, target_energy: target[0], relevance: 1, transition: null,
-      arc_fit: 1 - Math.abs(first.energy - target[0]), objective: 0,
+      arc_fit: 1 - Math.abs(first.energy - target[0]), objective: null, is_seed: true,
     }];
     const usedArtists = new Set(first.artists);
     let current = first;
@@ -164,7 +164,7 @@ export const mockApi = {
         const tr = transition(current, c);
         const fit = 1 - Math.abs(c.energy - target[t]);
         const objective = alpha * rel + (1 - alpha) * tr.score + ARC_WEIGHT * fit;
-        if (!best || objective > best.objective) {
+        if (!best || objective > (best.objective ?? -Infinity)) {
           best = { track: c, target_energy: target[t], relevance: rel, transition: tr, arc_fit: fit, objective };
         }
       }
@@ -173,8 +173,10 @@ export const mockApi = {
       best.track.artists.forEach((a) => usedArtists.add(a));
       current = best.track;
     }
-    // The mock only implements greedy (the backend defaults to beam_v1).
+    // The mock only implements greedy with the seed first (the backend defaults to beam_v1
+    // and also supports seed_position "best_fit").
     return delay({ generator: "greedy_v0 (mock)", alpha, gamma: ARC_WEIGHT, beam_width: null,
+                   seed_position: "start", seed_index: 0,
                    pool_size: MOCK_TRACKS.length, runtime_ms: performance.now() - started,
                    arc: target, steps }, 380);
   },

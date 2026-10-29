@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { ARC_PRESETS } from "@/lib/arcs";
 import { formatDuration } from "@/lib/camelot";
-import type { MixResponse, Track } from "@/lib/types";
+import type { MixResponse, SeedPosition, Track } from "@/lib/types";
 import { SeedPicker } from "@/components/SeedPicker";
 import { ArcEditor } from "@/components/ArcEditor";
 import { ArcChart } from "@/components/ArcChart";
@@ -19,6 +19,11 @@ import { usePlayer } from "@/components/PlayerContext";
 const BALANCE_PRESETS = [
   { label: "DJ mode", alpha: 0.5, note: "Seamless mixing: keys and tempos line up" },
   { label: "Discovery mode", alpha: 0.75, note: "Closer to the seed's style, rougher transitions" },
+];
+
+const SEED_PLACEMENTS: { value: SeedPosition; label: string; note: string }[] = [
+  { value: "start", label: "Seed opens the mix", note: "Your seed plays first; the arc is built after it." },
+  { value: "best_fit", label: "Seed where it fits", note: "Your seed goes where the arc's energy matches it; the mix is built in both directions." },
 ];
 
 export default function MixPage() {
@@ -36,6 +41,7 @@ function MixBuilder() {
   const [points, setPoints] = useState(ARC_PRESETS[0].points);
   const [alpha, setAlpha] = useState(0.5);
   const [length, setLength] = useState(12);
+  const [seedPosition, setSeedPosition] = useState<SeedPosition>("best_fit"); // generator default (Step 5.1)
   const [mix, setMix] = useState<MixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +61,7 @@ function MixBuilder() {
     if (!seed) return;
     setLoading(true);
     setError(null);
-    api.mix({ seed_ids: [seed.id], arc: points, alpha, length })
+    api.mix({ seed_ids: [seed.id], arc: points, alpha, length, seed_position: seedPosition })
       .then(setMix)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -79,6 +85,24 @@ function MixBuilder() {
         <section className="flex flex-col gap-6 rounded-2xl border border-border bg-surface p-5" aria-label="Mix settings">
           <Field label="1. Seed song">
             <SeedPicker value={seed} onChange={setSeed} />
+            <div className="mt-3 grid grid-cols-2 gap-1 rounded-full border border-border bg-bg p-1" role="radiogroup" aria-label="Seed placement">
+              {SEED_PLACEMENTS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={seedPosition === p.value}
+                  title={p.note}
+                  onClick={() => setSeedPosition(p.value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-hi ${
+                    seedPosition === p.value ? "bg-surface-3 text-text" : "text-text-2 hover:text-text"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-muted">{SEED_PLACEMENTS.find((p) => p.value === seedPosition)!.note}</p>
           </Field>
 
           <Field label="2. Energy arc" hint="Pick a preset or drag the points">
@@ -166,14 +190,14 @@ function MixBuilder() {
           )}
 
           {loading && (
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="space-y-3">{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
               <Skeleton className="h-64 rounded-2xl" />
             </div>
           )}
 
           {mix && !loading && (
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="min-w-0">
                 <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-2">
                   <span><b className="text-text">{mix.steps.length}</b> tracks</span>
@@ -204,13 +228,16 @@ function MixBuilder() {
                               <PlayButton onClick={() => play(s.track)} label={`Play ${s.track.name}`} />
                             </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold">{s.track.name}</p>
+                          <div className="min-w-24 flex-1">
+                            <p className="flex items-center gap-2 text-sm font-bold">
+                              <span className="min-w-0 truncate">{s.track.name}</span>
+                              {s.is_seed && <span className="shrink-0 rounded-full bg-accent/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-accent-hi">seed</span>}
+                            </p>
                             <p className="truncate text-xs text-text-2">{s.track.artists.join(", ")}</p>
                           </div>
                           <span className="hidden w-16 text-right text-xs tabular-nums text-text-2 sm:block">{Math.round(s.track.bpm)} BPM</span>
                           <CamelotPill track={s.track} />
-                          <div className="hidden w-24 flex-col gap-1 md:flex" title={`Energy ${s.track.energy.toFixed(2)} (target ${s.target_energy.toFixed(2)})`}>
+                          <div className="hidden w-24 flex-col gap-1 xl:flex" title={`Energy ${s.track.energy.toFixed(2)} (target ${s.target_energy.toFixed(2)})`}>
                             <EnergyBar value={s.track.energy} target={s.target_energy} width="w-24" />
                             <span className="text-[10px] tabular-nums text-muted">energy {s.track.energy.toFixed(2)}</span>
                           </div>
@@ -220,7 +247,7 @@ function MixBuilder() {
                   </AnimatePresence>
                 </ol>
               </div>
-              <aside className="h-fit rounded-2xl border border-border bg-surface p-4 xl:sticky xl:top-6">
+              <aside className="h-fit rounded-2xl border border-border bg-surface p-4 2xl:sticky 2xl:top-6">
                 <ArcChart mix={mix} />
                 <p className="mt-3 text-xs leading-relaxed text-muted">
                   Dashed amber = the arc you drew (resampled to {mix.steps.length} steps). Violet = energy of the chosen tracks. The amber tick on each energy bar marks its target.

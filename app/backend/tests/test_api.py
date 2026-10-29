@@ -15,6 +15,7 @@ from app.backend.covers import CoverCache, FetchResult, RateLimiter
 from app.backend.engine import Engine
 from app.backend.main import create_app, load_settings
 from djlite.features import add_camelot
+from djlite.generator import load_generator_config
 from djlite.retrieval import load_configs
 from djlite.style import l2_normalize
 
@@ -83,7 +84,12 @@ def settings():
 def engine(settings):
     _, rcfg, tcfg = load_configs()
     df, style = fixture_tracks()
-    return Engine(df, style, rcfg, tcfg, settings, popularity=np.arange(N, dtype=float) % 5)
+    g = load_generator_config()
+    # 240 random tracks: a tight |dBPM| cap can make a 10-track mix infeasible here; the cap
+    # itself is covered by tests/test_generator.py
+    g = {**g, "constraints": {**g["constraints"], "max_dbpm": None}}
+    return Engine(df, style, rcfg, tcfg, settings, popularity=np.arange(N, dtype=float) % 5,
+                  gcfg=g)
 
 
 @pytest.fixture()
@@ -198,11 +204,37 @@ def test_mix(client, engine, generator):
     assert len(ids) == len(set(ids))
     artists = [a for s in steps for a in s["track"]["artists"]]
     assert len(artists) == len(set(artists))  # max_per_artist = 1
-    gamma = r["gamma"]
+    gamma, lam = r["gamma"], r["weak_link_lambda"]
+    tau = engine.gcfg["objective"]["weak_link"]["tau"]
+    assert steps[0]["is_seed"] and not any(s["is_seed"] for s in steps[1:])
     for s in steps[1:]:
+        T = s["transition"]["score"]
         assert s["arc_fit"] == pytest.approx(1 - abs(s["track"]["energy"] - s["target_energy"]))
-        assert s["objective"] == pytest.approx(0.4 * s["relevance"] + 0.6 * s["transition"]["score"]
-                                               + gamma * s["arc_fit"])
+        assert s["objective"] == pytest.approx(0.4 * s["relevance"] + 0.6 * T
+                                               - lam * max(0, tau - T) + gamma * s["arc_fit"])
+
+
+def test_mix_best_fit_seed_position(client, engine):
+    arc = [0.0, 1.0]  # targets rise linearly, so the seed lands where its energy fits
+    r = client.post("/api/mix", json={"seed_ids": [_id(40)], "arc": arc, "length": 10,
+                                      "seed_position": "best_fit"}).json()
+    steps, k = r["steps"], r["seed_index"]
+    assert r["seed_position"] == "best_fit" and len(steps) == 10
+    assert steps[k]["track"]["id"] == _id(40) and steps[k]["is_seed"]
+    assert k == int(np.argmin([abs(s["target_energy"] - steps[k]["track"]["energy"]) for s in steps]))
+    assert steps[0]["transition"] is None and all(s["transition"] for s in steps[1:])
+    assert steps[k]["objective"] is None
+    gamma, lam = r["gamma"], r["weak_link_lambda"]
+    tau = engine.gcfg["objective"]["weak_link"]["tau"]
+    for t, s in enumerate(steps):
+        if t == k:
+            continue
+        # tracks before the seed were scored on the transition into their right neighbour
+        T = (steps[t + 1] if t < k else s)["transition"]["score"]
+        assert s["objective"] == pytest.approx(0.5 * s["relevance"] + 0.5 * T
+                                               - lam * max(0, tau - T) + gamma * s["arc_fit"])
+    bad = client.post("/api/mix", json={"seed_ids": [_id(40)], "arc": arc, "seed_position": "end"})
+    assert bad.status_code == 422
 
 
 def test_mix_greedy_equals_beam_width_1(engine):

@@ -174,32 +174,40 @@ class Engine:
         return {"seed": self.track_json(i), "alpha": alpha, "items": items}
 
     def mix(self, seed_ids: list[str], arc: list[float], alpha: float, length: int,
-            generator: str | None = None) -> dict:
+            generator: str | None = None, seed_position: str | None = None) -> dict:
         """Arc-following mix (djlite.generator): beam_v1 (default) or greedy_v0, both on the
-        same candidate pool. Each step maximizes alpha * relevance(seed set)
-        + (1 - alpha) * transition(prev -> c) + gamma * arc_fit."""
+        same candidate pool; the first seed at the start or at its best-fitting arc position.
+        Each non-seed step scores alpha * relevance(seed set) + (1 - alpha) * T
+        - lambda * max(0, tau - T) + gamma * arc_fit, with T its transition to the neighbour
+        it was placed next to. Steps are in playlist order; `transition` is always the one
+        from the previous step."""
         t0 = time.perf_counter()
         gen = generator or self.settings["mix"]["generator"]
         seeds = [self.index_of(s) for s in seed_ids]
         target = resample_arc(arc, length)
-        out = G.generate(self.rec, seeds, target, self.gcfg, generator=gen, alpha=alpha)
-        pool, seq, gamma = out["pool"], out["seq"], out["gamma"]
-        energy = pool.energy
-        first = int(pool.idx[0])
-        steps = [{"track": self.track_json(first), "target_energy": float(target[0]),
-                  "relevance": float(pool.rel[0]), "transition": None,
-                  "arc_fit": float(1 - abs(energy[0] - target[0])), "objective": None}]
-        for t, (p_prev, p) in enumerate(zip(seq, seq[1:]), start=1):
-            prev, cur = int(pool.idx[p_prev]), int(pool.idx[p])
-            tr = self.rec.transition(prev, np.array([cur]))
-            parts = {**tr, "transition": tr["score"]}
-            fit = float(1 - abs(energy[p] - target[t]))
-            score = float(np.asarray(tr["score"])[0])
-            steps.append({"track": self.track_json(cur), "target_energy": float(target[t]),
-                          "relevance": float(pool.rel[p]), "transition": self.transition_json(parts, 0),
-                          "arc_fit": fit,
-                          "objective": alpha * float(pool.rel[p]) + (1 - alpha) * score + gamma * fit})
-        return {"generator": gen, "alpha": alpha, "gamma": gamma,
+        out = G.generate(self.rec, seeds, target, self.gcfg, generator=gen, alpha=alpha,
+                         seed_position=seed_position)
+        pool, seq, sp = out["pool"], out["seq"], out["seed_pos"]
+        gamma, lam, tau = out["gamma"], out["lam"], out["tau"]
+        trans = [None]
+        for p_prev, p in zip(seq, seq[1:]):
+            tr = self.rec.transition(int(pool.idx[p_prev]), np.array([int(pool.idx[p])]))
+            trans.append({**tr, "transition": tr["score"]})
+        steps = []
+        for t, p in enumerate(seq):
+            fit = float(1 - abs(pool.energy[p] - target[t]))
+            objective = None
+            if t != sp:  # the transition this track was scored on: towards the seed side
+                T = float(np.asarray(trans[t if t > sp else t + 1]["score"])[0])
+                objective = (alpha * float(pool.rel[p]) + (1 - alpha) * T
+                             - lam * max(0.0, tau - T) + gamma * fit)
+            steps.append({"track": self.track_json(int(pool.idx[p])),
+                          "target_energy": float(target[t]), "relevance": float(pool.rel[p]),
+                          "transition": None if t == 0 else self.transition_json(trans[t], 0),
+                          "arc_fit": fit, "objective": objective, "is_seed": t == sp})
+        return {"generator": gen, "alpha": alpha, "gamma": gamma, "weak_link_lambda": lam,
+                "max_dbpm": out["max_dbpm"], "seed_position": seed_position or
+                self.gcfg.get("seed_position", "start"), "seed_index": sp,
                 "beam_width": self.gcfg["beam"]["width"] if gen == "beam_v1" else None,
                 "pool_size": int(len(pool.idx)), "arc": [float(x) for x in target], "steps": steps,
                 "runtime_ms": round((time.perf_counter() - t0) * 1000, 1)}
