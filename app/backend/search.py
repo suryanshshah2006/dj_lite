@@ -4,7 +4,9 @@ Build:  python -m app.backend.build_search_index   (writes app/backend/cache/sea
 
 Ranking tiers; within a tier: tier-specific refinement, then the primary artist's
 prominence (precomputed at build time, see build_search_index.artist_prominence),
-then the duplicate-release popularity proxy, then shorter title:
+then the duplicate-release popularity proxy, then shorter title. Optional original-release
+boost (`original_boost_min_prom`): among results of one tier with the same normalized title,
+the earliest release whose artist prominence is at least the threshold is ranked first:
   0  exact title            ("one more time")
   1  title prefix           ("one more" -> "One More Time", "One More Night")
   2  every token in artists ("daft punk"; artists equal to the query come first)
@@ -24,7 +26,7 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PROMINENCE = ("co_artists", "tracks")  # columns prom_<name> in the tracks table
 _APOS = re.compile(r"['’`]")
 _NONWORD = re.compile(r"[^\w]+")
@@ -39,9 +41,8 @@ def normalize(s: str) -> str:
     return " ".join(s.replace("_", " ").split())
 
 
-def build_index(rows: Iterable[tuple[str, str, list[str], float, float, float]], db_path: Path,
-                batch: int = 50_000) -> int:
-    """rows: (track_id, name, artists, popularity, prom_co_artists, prom_tracks).
+def build_index(rows: Iterable[tuple], db_path: Path, batch: int = 50_000) -> int:
+    """rows: (track_id, name, artists, popularity, prom_co_artists, prom_tracks, year or None).
     Replaces db_path atomically."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = db_path.with_suffix(".building")
@@ -52,7 +53,8 @@ def build_index(rows: Iterable[tuple[str, str, list[str], float, float, float]],
         PRAGMA synchronous = OFF;
         CREATE TABLE tracks (rowid INTEGER PRIMARY KEY, id TEXT NOT NULL, name_key TEXT NOT NULL,
                              artists_key TEXT NOT NULL, pop REAL NOT NULL,
-                             prom_co_artists REAL NOT NULL, prom_tracks REAL NOT NULL);
+                             prom_co_artists REAL NOT NULL, prom_tracks REAL NOT NULL,
+                             year INTEGER);
         CREATE VIRTUAL TABLE fts USING fts5(name_key, artists_key, content='tracks',
             content_rowid='rowid', tokenize='unicode61', prefix='2 3');
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
@@ -60,13 +62,14 @@ def build_index(rows: Iterable[tuple[str, str, list[str], float, float, float]],
     n, buf = 0, []
 
     def flush():
-        db.executemany("INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?)", buf)
+        db.executemany("INSERT INTO tracks VALUES (?, ?, ?, ?, ?, ?, ?, ?)", buf)
         buf.clear()
 
-    for tid, name, artists, pop, prom_co, prom_tr in rows:
+    for tid, name, artists, pop, prom_co, prom_tr, year in rows:
         n += 1
+        year = None if year is None or year != year else int(year)  # NaN -> NULL
         buf.append((n, tid, normalize(name), " | ".join(normalize(a) for a in artists),
-                    float(pop), float(prom_co), float(prom_tr)))
+                    float(pop), float(prom_co), float(prom_tr), year))
         if len(buf) >= batch:
             flush()
     flush()
@@ -89,7 +92,7 @@ class SearchIndex:
     """Read-only, one SQLite connection per thread (FastAPI runs sync routes in a pool)."""
 
     def __init__(self, db_path: Path, tier_cap: int = 400, prominence: str = "co_artists",
-                 tier_window: int = 5000):
+                 tier_window: int = 5000, original_boost_min_prom: float | None = None):
         if not db_path.exists():
             raise FileNotFoundError(db_path)
         if prominence not in PROMINENCE:
@@ -97,6 +100,7 @@ class SearchIndex:
         self.prom = f"prom_{prominence}"
         self.uri = f"{db_path.resolve().as_uri()}?mode=ro"
         self.tier_cap, self.tier_window = tier_cap, tier_window
+        self.boost_min_prom = original_boost_min_prom
         self._local = threading.local()
         meta = dict(self._db().execute("SELECT key, value FROM meta"))
         if int(meta.get("schema_version", 0)) != SCHEMA_VERSION:
@@ -125,7 +129,7 @@ class SearchIndex:
         db, cap = self._db(), self.tier_cap
         tokens = key.split()
         prom, win = self.prom, self.tier_window
-        cols = f"t.rowid, t.id, t.name_key, t.artists_key, t.pop, t.{prom}"
+        cols = f"t.rowid, t.id, t.name_key, t.artists_key, t.pop, t.{prom}, t.year"
 
         def by_prom(matches: str) -> str:
             # the most prominent `cap` rows among the first `win` matches
@@ -144,7 +148,7 @@ class SearchIndex:
         seen: set[int] = set()
         ranked: list[tuple] = []
         for tier, (sql, params) in enumerate(tiers):
-            for rowid, tid, name, artists, pop, pr in db.execute(sql, params):
+            for rowid, tid, name, artists, pop, pr, year in db.execute(sql, params):
                 if rowid in seen:
                     continue
                 seen.add(rowid)
@@ -156,11 +160,21 @@ class SearchIndex:
                     sub = 0 if all(t in name for t in tokens) else 1
                 else:
                     sub = 0
-                ranked.append((tier, sub, -pr, -pop, len(name), rowid, tid))
+                ranked.append([tier, sub, 1, -pr, -pop, len(name), rowid, tid, name, year])
             if tier >= 1 and len(ranked) >= limit:
                 break  # better tiers already fill the page
-        ranked.sort()
-        return [r[-1] for r in ranked[:limit]]
+        if self.boost_min_prom is not None:
+            # per (tier, title): the earliest release by a prominent-enough artist goes first
+            best: dict = {}
+            for r in ranked:
+                if r[9] is not None and -r[3] >= self.boost_min_prom:
+                    k = (r[0], r[8])
+                    if k not in best or (r[9], r[3], r[6]) < (best[k][9], best[k][3], best[k][6]):
+                        best[k] = r
+            for r in best.values():
+                r[2] = 0
+        ranked.sort(key=lambda r: tuple(r[:7]))
+        return [r[7] for r in ranked[:limit]]
 
     def close(self) -> None:
         db = getattr(self._local, "db", None)

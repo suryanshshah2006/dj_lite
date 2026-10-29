@@ -49,7 +49,7 @@ def main() -> None:
     paths, _, _ = load_configs()
     t0 = time.perf_counter()
     tracks = pd.read_parquet(PROJECT_ROOT / paths["features_dir"] / "track_features.parquet",
-                             columns=["id", "name", "artists", "artist_ids"])
+                             columns=["id", "name", "artists", "artist_ids", "year"])
     albums = pd.read_parquet(PROJECT_ROOT / paths["processed_dir"] / "tracks_clean.parquet",
                              columns=["id", "album_id"]).set_index("id")["album_id"]
     tracks["album_id"] = tracks["id"].map(albums)
@@ -59,7 +59,7 @@ def main() -> None:
     pop = tracks["id"].map(dedup["kept_id"].value_counts()).fillna(0)
     prom = artist_prominence(tracks)
     rows = zip(tracks["id"], tracks["name"], tracks["artists"], pop,
-               prom["co_artists"], prom["tracks"])
+               prom["co_artists"], prom["tracks"], tracks["year"])
     n = build_index(rows, args.out)
     size = args.out.stat().st_size / 2**20
     print(f"indexed {n:,} tracks -> {args.out} ({size:.0f} MB) in {time.perf_counter() - t0:.1f}s")

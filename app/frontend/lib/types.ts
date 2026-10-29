@@ -70,6 +70,7 @@ export interface MixRequest {
   arc: number[]; // target energies (control points; resampled to `length`)
   alpha?: number;
   length?: number;
+  generator?: "beam_v1" | "greedy_v0"; // backend default: beam_v1
 }
 
 export interface MixStep {
@@ -83,8 +84,12 @@ export interface MixStep {
 }
 
 export interface MixResponse {
-  generator: string; // "greedy_v0" for now; beam search in Step 5
+  generator: string; // "beam_v1" | "greedy_v0" ("... (mock)" in mock mode)
   alpha: number;
+  gamma?: number; // arc-fit weight
+  beam_width?: number | null; // beam_v1 only
+  pool_size?: number;
+  runtime_ms?: number; // server-side generation time
   arc: number[]; // resampled target curve, one value per step
   steps: MixStep[];
 }

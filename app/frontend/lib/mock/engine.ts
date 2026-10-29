@@ -146,6 +146,7 @@ export const mockApi = {
   },
 
   async mix({ seed_ids, arc, alpha = 0.5, length = 10 }: MixRequest): Promise<MixResponse> {
+    const started = performance.now();
     const seeds = await Promise.all(seed_ids.map((id) => this.track(id)));
     const target = resampleArc(arc, length);
     const first = seeds[0];
@@ -172,6 +173,9 @@ export const mockApi = {
       best.track.artists.forEach((a) => usedArtists.add(a));
       current = best.track;
     }
-    return delay({ generator: "greedy_v0 (mock)", alpha, arc: target, steps }, 380);
+    // The mock only implements greedy (the backend defaults to beam_v1).
+    return delay({ generator: "greedy_v0 (mock)", alpha, gamma: ARC_WEIGHT, beam_width: null,
+                   pool_size: MOCK_TRACKS.length, runtime_ms: performance.now() - started,
+                   arc: target, steps }, 380);
   },
 };

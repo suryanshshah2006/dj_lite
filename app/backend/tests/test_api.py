@@ -180,12 +180,17 @@ def test_next_errors(client):
 
 # ---------- mix ----------
 
-def test_mix_greedy_v0(client, settings):
+@pytest.mark.parametrize("generator", [None, "beam_v1", "greedy_v0"])
+def test_mix(client, engine, generator):
     arc = [0.3, 0.6, 0.9, 0.5]
-    r = client.post("/api/mix", json={"seed_ids": [_id(40)], "arc": arc, "alpha": 0.4,
-                                      "length": 10}).json()
+    body = {"seed_ids": [_id(40)], "arc": arc, "alpha": 0.4, "length": 10}
+    if generator:
+        body["generator"] = generator
+    r = client.post("/api/mix", json=body).json()
     steps = r["steps"]
-    assert r["generator"] == "greedy_v0"
+    assert r["generator"] == (generator or "beam_v1")  # beam_v1 is the default
+    assert r["beam_width"] == (None if generator == "greedy_v0" else engine.gcfg["beam"]["width"])
+    assert r["runtime_ms"] > 0 and r["pool_size"] > 10
     assert len(steps) == 10 and len(r["arc"]) == 10
     assert r["arc"][0] == pytest.approx(0.3) and r["arc"][-1] == pytest.approx(0.5)
     assert steps[0]["track"]["id"] == _id(40) and steps[0]["transition"] is None
@@ -193,23 +198,37 @@ def test_mix_greedy_v0(client, settings):
     assert len(ids) == len(set(ids))
     artists = [a for s in steps for a in s["track"]["artists"]]
     assert len(artists) == len(set(artists))  # max_per_artist = 1
-    w = settings["mix"]["arc_weight"]
+    gamma = r["gamma"]
     for s in steps[1:]:
         assert s["arc_fit"] == pytest.approx(1 - abs(s["track"]["energy"] - s["target_energy"]))
         assert s["objective"] == pytest.approx(0.4 * s["relevance"] + 0.6 * s["transition"]["score"]
-                                               + w * s["arc_fit"])
+                                               + gamma * s["arc_fit"])
 
 
-def test_mix_follows_arc_better_with_arc_weight(engine, settings):
-    """With a strong arc term the achieved energy should track a steep target closely."""
-    strong = {**settings, "mix": {**settings["mix"], "arc_weight": 5.0}}
+def test_mix_greedy_equals_beam_width_1(engine):
     eng = Engine.__new__(Engine)
     eng.__dict__.update(engine.__dict__)
-    eng.settings = strong
+    eng.gcfg = {**engine.gcfg, "beam": {"width": 1}}
+    arc = [0.2, 0.8, 0.4]
+    ids = lambda r: [s["track"]["id"] for s in r["steps"]]  # noqa: E731
+    assert ids(eng.mix([_id(70)], arc, 0.5, 10, "beam_v1")) == \
+        ids(engine.mix([_id(70)], arc, 0.5, 10, "greedy_v0"))
+
+
+def test_mix_follows_arc_better_with_strong_gamma(engine):
+    """With a strong arc term the achieved energy should track a steep target closely."""
+    eng = Engine.__new__(Engine)
+    eng.__dict__.update(engine.__dict__)
+    eng.gcfg = {**engine.gcfg, "objective": {**engine.gcfg["objective"], "gamma": 5.0}}
     arc = [0.1, 0.9, 0.1]
     r = eng.mix([_id(50)], arc, 0.5, 9)
     mae = np.mean([abs(s["track"]["energy"] - s["target_energy"]) for s in r["steps"][1:]])
     assert mae < 0.1
+
+
+def test_mix_unknown_generator_rejected(client):
+    r = client.post("/api/mix", json={"seed_ids": [_id(1)], "arc": [0.5], "generator": "rl"})
+    assert r.status_code == 422
 
 
 def test_mix_validation(client):

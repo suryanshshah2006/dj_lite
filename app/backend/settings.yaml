@@ -11,6 +11,11 @@ search:
   #               Vitamin String Quartet outranks Queen on "bohemian rhapsody")
   prominence: co_artists
   tier_window: 5000        # prominence ordering looks at the first N matches per tier (exact below N)
+  # Same title within a tier: the earliest release by an artist with prominence >= N goes first
+  # (null = off). 100 is the only tested threshold (10/20/30/50/100) that improved the
+  # 20-song regression set (11 -> 12 of 20) without breaking a pass; lower ones fix more
+  # songs but break "Halo". Chosen on that same set, so treat the gain as weak evidence.
+  original_boost_min_prominence: 100
 
 # Shown on Home before the user searches (GET /api/featured). Dataset ids; unknown ids are skipped.
 featured:
@@ -41,13 +46,11 @@ next:
   max_n: 50
 
 mix:
-  generator: greedy_v0
+  generator: beam_v1       # or greedy_v0 (also selectable per request: {"generator": ...})
   default_length: 12
   max_length: 40
-  default_alpha: 0.5
-  arc_weight: 0.5          # weight on arc fit = 1 - |energy - target|
-  k: 300                   # FAISS candidates per query (current track and each seed)
-  max_per_artist: 1        # an artist appears at most this often in a mix
+  default_alpha: 0.5       # "DJ mode"; the UI's "Discovery mode" sends 0.75
+  # gamma (arc weight), beam width, pool size and constraints: configs/generator.yaml
 
 covers:
   db_path: app/backend/cache/covers.sqlite   # relative to the project root

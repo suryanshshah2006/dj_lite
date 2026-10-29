@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 import yaml
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -39,6 +39,7 @@ class MixRequest(BaseModel):
     arc: list[float] = Field(min_length=1, max_length=200)
     alpha: float | None = Field(default=None, ge=0.0, le=1.0)
     length: int | None = Field(default=None, ge=2, le=200)
+    generator: Literal["beam_v1", "greedy_v0"] | None = None
 
     @field_validator("arc")
     @classmethod
@@ -110,7 +111,7 @@ def create_app(engine_factory: Callable[[dict], Engine] | None = None,
         try:
             return engine(request).mix(body.seed_ids, body.arc,
                                        ms["default_alpha"] if body.alpha is None else body.alpha,
-                                       length)
+                                       length, body.generator)
         except KeyError as exc:
             raise HTTPException(404, f"track {exc.args[0]} not found")
 

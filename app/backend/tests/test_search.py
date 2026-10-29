@@ -18,17 +18,17 @@ def _id(k: int) -> str:
     return f"{k:022d}"
 
 
-ROWS = [  # (id, name, artists, popularity, prom_co_artists, prom_tracks)
-    (_id(1), "Love Story", ["Taylor Swift"], 3, 0, 0),
-    (_id(2), "Lovely", ["Billie Eilish", "Khalid"], 9, 0, 0),
-    (_id(3), "Love", ["Kendrick Lamar"], 0, 0, 0),
-    (_id(4), "Love", ["Lana Del Rey"], 5, 0, 0),
-    (_id(5), "Crazy in Love", ["Beyoncé"], 8, 0, 0),
-    (_id(6), "Halo", ["Beyoncé"], 2, 0, 0),
-    (_id(7), "Don't Stop Me Now", ["Queen"], 1, 0, 0),
-    (_id(8), "Queen of Hearts", ["Juice Newton"], 4, 0, 0),
-    (_id(9), "Killer Queen", ["Queen"], 0, 0, 0),
-    (_id(10), "Somebody to Love", ["Queens of the Stone Age"], 7, 0, 0),
+ROWS = [  # (id, name, artists, popularity, prom_co_artists, prom_tracks, year)
+    (_id(1), "Love Story", ["Taylor Swift"], 3, 0, 0, None),
+    (_id(2), "Lovely", ["Billie Eilish", "Khalid"], 9, 0, 0, None),
+    (_id(3), "Love", ["Kendrick Lamar"], 0, 0, 0, None),
+    (_id(4), "Love", ["Lana Del Rey"], 5, 0, 0, None),
+    (_id(5), "Crazy in Love", ["Beyoncé"], 8, 0, 0, None),
+    (_id(6), "Halo", ["Beyoncé"], 2, 0, 0, None),
+    (_id(7), "Don't Stop Me Now", ["Queen"], 1, 0, 0, None),
+    (_id(8), "Queen of Hearts", ["Juice Newton"], 4, 0, 0, None),
+    (_id(9), "Killer Queen", ["Queen"], 0, 0, 0, None),
+    (_id(10), "Somebody to Love", ["Queens of the Stone Age"], 7, 0, 0, None),
 ]
 
 
@@ -81,7 +81,7 @@ def test_engine_uses_index_and_falls_back(tmp_path):
     df, style = fixture_tracks()
     db = tmp_path / "s.sqlite"
     z = np.zeros(len(df))
-    build_index(zip(df["id"], df["name"], df["artists"], z, z, z), db)
+    build_index(zip(df["id"], df["name"], df["artists"], z, z, z, df["year"]), db)
     idx = SearchIndex(db)
     fts = Engine(df, style, rcfg, tcfg, settings, search_index=idx)
     scan = Engine(df, style, rcfg, tcfg, settings)
@@ -92,10 +92,10 @@ def test_engine_uses_index_and_falls_back(tmp_path):
 
 
 COVERS = [  # one title by the original artist and by prolific cover acts
-    (_id(21), "Bohemian Rhapsody", ["Queen"], 0, 57, 5),
-    (_id(22), "Bohemian Rhapsody", ["Vitamin String Quartet"], 0, 1, 1474),
-    (_id(23), "Bohemian Rhapsody", ["Richard Cheese"], 9, 16, 163),
-    (_id(24), "Bohemian Rhapsody - Live", ["Queen"], 0, 57, 5),
+    (_id(21), "Bohemian Rhapsody", ["Queen"], 0, 57, 5, 1975),
+    (_id(22), "Bohemian Rhapsody", ["Vitamin String Quartet"], 0, 1, 1474, 2004),
+    (_id(23), "Bohemian Rhapsody", ["Richard Cheese"], 9, 16, 163, 2010),
+    (_id(24), "Bohemian Rhapsody - Live", ["Queen"], 0, 57, 5, 1986),
 ]
 
 
@@ -129,3 +129,22 @@ def test_artist_prominence():
     # q shares album "comp" with x and y; v only with itself
     assert p["co_artists"].tolist() == [2, 2, 0, 0, 0, 2]
     assert p["tracks"].tolist() == [2, 2, 3, 3, 3, 1]
+
+
+ORIGINALS = [  # the original is older but its artist is less "prominent" than a remake's
+    (_id(31), "Billie Jean", ["Michael Jackson"], 0, 88, 135, 1982),
+    (_id(32), "Billie Jean", ["A Boogie Wit da Hoodie"], 0, 133, 73, 2019),
+    (_id(33), "Billie Jean", ["Pickin' On Series"], 0, 8, 988, 1999),
+    (_id(34), "Billie Jean", ["Unknown Act"], 0, 3, 2, 1979),  # older, below threshold
+]
+
+
+@pytest.mark.parametrize("threshold, first", [(None, _id(32)), (50, _id(31)), (500, _id(32))])
+def test_original_release_boost(tmp_path, threshold, first):
+    db = tmp_path / "orig.sqlite"
+    build_index(iter(ORIGINALS), db)
+    idx = SearchIndex(db, original_boost_min_prom=threshold)
+    res = idx.search("billie jean")
+    assert res[0] == first
+    assert res[1:] == [r for r in SearchIndex(db).search("billie jean") if r != first]
+    idx.close()

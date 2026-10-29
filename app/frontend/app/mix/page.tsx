@@ -15,6 +15,12 @@ import { Cover } from "@/components/Cover";
 import { CamelotPill, EnergyBar, PlayButton, Skeleton } from "@/components/ui";
 import { usePlayer } from "@/components/PlayerContext";
 
+// α presets from the v2 evaluation's trade-off curve (knee between 0.5 and 0.75).
+const BALANCE_PRESETS = [
+  { label: "DJ mode", alpha: 0.5, note: "Seamless mixing: keys and tempos line up" },
+  { label: "Discovery mode", alpha: 0.75, note: "Closer to the seed's style, rougher transitions" },
+];
+
 export default function MixPage() {
   return (
     <Suspense fallback={null}>
@@ -95,7 +101,24 @@ function MixBuilder() {
             <ArcEditor points={points} onChange={(p) => { setPoints(p); setPreset("custom"); }} />
           </Field>
 
-          <Field label="3. Balance">
+          <Field label="3. Balance" hint="Preset or fine-tune with the slider">
+            <div className="mb-3 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Balance presets">
+              {BALANCE_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={alpha === p.alpha}
+                  onClick={() => setAlpha(p.alpha)}
+                  className={`rounded-xl border px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-hi ${
+                    alpha === p.alpha ? "border-accent bg-accent/20" : "border-border hover:border-surface-3"
+                  }`}
+                >
+                  <span className="block text-xs font-bold text-text">{p.label} <span className="font-medium text-muted">α {p.alpha}</span></span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-text-2">{p.note}</span>
+                </button>
+              ))}
+            </div>
             <div className="flex justify-between text-xs font-semibold text-text-2">
               <span>Smooth transitions</span><span>Style match</span>
             </div>
@@ -156,7 +179,10 @@ function MixBuilder() {
                   <span><b className="text-text">{mix.steps.length}</b> tracks</span>
                   <span>{formatDuration(totalMs)}</span>
                   {meanTransition != null && <span>avg transition <b className="tabular-nums text-text">{meanTransition.toFixed(2)}</b></span>}
-                  <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted">generator: {mix.generator}</span>
+                  <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted">
+                    generator: {mix.generator}{mix.beam_width ? ` (B=${mix.beam_width})` : ""}
+                    {mix.runtime_ms != null && ` · ${mix.runtime_ms < 1000 ? `${Math.round(mix.runtime_ms)} ms` : `${(mix.runtime_ms / 1000).toFixed(2)} s`}`}
+                  </span>
                 </div>
                 <ol className="flex flex-col">
                   <AnimatePresence>

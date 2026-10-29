@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+from djlite import generator as G
+from djlite.generator import resample_arc
 from djlite.retrieval import Recommender, load_configs, load_tracks
 from djlite.transitions import COMPONENTS
 
@@ -38,10 +41,11 @@ def _num(v):
 class Engine:
     def __init__(self, tracks: pd.DataFrame, style: np.ndarray, rcfg: dict, tcfg: dict,
                  settings: dict, popularity: np.ndarray | None = None,
-                 search_index: SearchIndex | None = None):
+                 search_index: SearchIndex | None = None, gcfg: dict | None = None):
         self.rec = Recommender(tracks, style, rcfg, tcfg)
         self.t = self.rec.tracks
         self.settings = settings
+        self.gcfg = gcfg or G.load_generator_config()  # configs/generator.yaml
         # Popularity proxy for search ranking: how many duplicate releases a song had.
         self.popularity = popularity if popularity is not None else np.zeros(len(self.t))
         self.search_index = search_index
@@ -58,7 +62,9 @@ class Engine:
         if db.exists():
             index = SearchIndex(db, tier_cap=settings["search"]["tier_cap"],
                                 prominence=settings["search"].get("prominence", "co_artists"),
-                                tier_window=settings["search"].get("tier_window", 5000))
+                                tier_window=settings["search"].get("tier_window", 5000),
+                                original_boost_min_prom=settings["search"].get(
+                                    "original_boost_min_prominence"))
             if index.n_tracks != len(tracks):
                 log.warning("search index has %d tracks, dataset %d: rebuild it with "
                             "python -m app.backend.build_search_index", index.n_tracks, len(tracks))
@@ -167,51 +173,33 @@ class Engine:
                           "transition": self.transition_json(parts, j)})
         return {"seed": self.track_json(i), "alpha": alpha, "items": items}
 
-    def mix(self, seed_ids: list[str], arc: list[float], alpha: float, length: int) -> dict:
-        """greedy_v0: at each step pick argmax of
-        alpha * relevance(seeds) + (1 - alpha) * transition(prev -> c) + w_arc * arc_fit."""
-        ms = self.settings["mix"]
+    def mix(self, seed_ids: list[str], arc: list[float], alpha: float, length: int,
+            generator: str | None = None) -> dict:
+        """Arc-following mix (djlite.generator): beam_v1 (default) or greedy_v0, both on the
+        same candidate pool. Each step maximizes alpha * relevance(seed set)
+        + (1 - alpha) * transition(prev -> c) + gamma * arc_fit."""
+        t0 = time.perf_counter()
+        gen = generator or self.settings["mix"]["generator"]
         seeds = [self.index_of(s) for s in seed_ids]
-        target = np.interp(np.linspace(0, 1, length), np.linspace(0, 1, len(arc)),
-                           np.clip(arc, 0, 1)) if len(arc) > 1 else np.full(length, arc[0])
-        energy = self.rec.arr["energy"]
-        cap = ms["max_per_artist"]
-        artist_count: dict[str, int] = {}
-        used: set[int] = set()
-
-        def take(i: int) -> None:
-            used.add(i)
-            for a in self.rec.artist_sets[i]:
-                artist_count[a] = artist_count.get(a, 0) + 1
-
-        first = seeds[0]
-        take(first)
+        target = resample_arc(arc, length)
+        out = G.generate(self.rec, seeds, target, self.gcfg, generator=gen, alpha=alpha)
+        pool, seq, gamma = out["pool"], out["seq"], out["gamma"]
+        energy = pool.energy
+        first = int(pool.idx[0])
         steps = [{"track": self.track_json(first), "target_energy": float(target[0]),
-                  "relevance": 1.0, "transition": None,
-                  "arc_fit": float(1 - abs(energy[first] - target[0])), "objective": None}]
-        seed_pool = self.rec.retrieve(np.array(seeds), k=ms["k"]).ravel()
-        current = first
-        for t in range(1, length):
-            pool = np.concatenate([self.rec.retrieve(np.array([current]), k=ms["k"])[0],
-                                   seed_pool])
-            pool = np.unique(pool[pool >= 0])
-            ok = np.array([c not in used and all(artist_count.get(a, 0) < cap
-                                                 for a in self.rec.artist_sets[c])
-                           for c in pool], dtype=bool)
-            cand = pool[ok]
-            if len(cand) == 0:
-                break
-            rel = np.mean([self.rec.relevance(s, cand)["relevance"] for s in seeds], axis=0)
-            tr = self.rec.transition(current, cand)
-            fit = 1 - np.abs(energy[cand] - target[t])
-            obj = alpha * rel + (1 - alpha) * np.asarray(tr["score"]) + ms["arc_weight"] * fit
-            j = int(np.argmax(obj))
-            c = int(cand[j])
+                  "relevance": float(pool.rel[0]), "transition": None,
+                  "arc_fit": float(1 - abs(energy[0] - target[0])), "objective": None}]
+        for t, (p_prev, p) in enumerate(zip(seq, seq[1:]), start=1):
+            prev, cur = int(pool.idx[p_prev]), int(pool.idx[p])
+            tr = self.rec.transition(prev, np.array([cur]))
             parts = {**tr, "transition": tr["score"]}
-            steps.append({"track": self.track_json(c), "target_energy": float(target[t]),
-                          "relevance": float(rel[j]), "transition": self.transition_json(parts, j),
-                          "arc_fit": float(fit[j]), "objective": float(obj[j])})
-            take(c)
-            current = c
-        return {"generator": ms["generator"], "alpha": alpha,
-                "arc": [float(x) for x in target], "steps": steps}
+            fit = float(1 - abs(energy[p] - target[t]))
+            score = float(np.asarray(tr["score"])[0])
+            steps.append({"track": self.track_json(cur), "target_energy": float(target[t]),
+                          "relevance": float(pool.rel[p]), "transition": self.transition_json(parts, 0),
+                          "arc_fit": fit,
+                          "objective": alpha * float(pool.rel[p]) + (1 - alpha) * score + gamma * fit})
+        return {"generator": gen, "alpha": alpha, "gamma": gamma,
+                "beam_width": self.gcfg["beam"]["width"] if gen == "beam_v1" else None,
+                "pool_size": int(len(pool.idx)), "arc": [float(x) for x in target], "steps": steps,
+                "runtime_ms": round((time.perf_counter() - t0) * 1000, 1)}

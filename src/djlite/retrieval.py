@@ -206,18 +206,29 @@ class Recommender:
         """
         if self.rcfg["ranking"]["transition_version"] != "v0_1":
             return self.transition(i, np.arange(len(self.tracks)))["score"]
+        return self.transition_block(np.array([i]), slice(None))[0]
+
+    def transition_block(self, rows: np.ndarray, cols) -> np.ndarray:
+        """Transition scores from each of `rows` to each of `cols` (v0_1), shape
+        (len(rows), len(cols)); `cols` may be an index array or slice(None) for the whole
+        pool. Same arithmetic as the generic scorer (equal to ~1e-12), but vectorized:
+        harmonic via lookup table, precomputed log2 tempos and unit timbre vectors."""
         t, a = self.tcfg, self.arr
-        harm = self._harm_table[self._camelot_code[i]][self._camelot_code]
-        # = tempo_score_v0_1(a["tempo"][i], a["tempo"]) with log2(tempo) precomputed
+        r = np.asarray(rows)[:, None]
+        cc = self._camelot_code[cols][None, :]
+        harm = self._harm_table[self._camelot_code[r], cc]
+        # = tempo_score_v0_1(tempo[r], tempo[c]) with log2(tempo) precomputed
         tv = t["v0_1"]["tempo"]
-        k = np.rint(self._log2_tempo - self._log2_tempo[i])
-        b2 = np.ldexp(a["tempo"], -k.astype(np.int64))
-        pct = np.abs(a["tempo"][i] - b2) / np.minimum(a["tempo"][i], b2)
+        tempo_r, tempo_c = a["tempo"][r], a["tempo"][cols][None, :]
+        k = np.rint(self._log2_tempo[cols][None, :] - self._log2_tempo[r])
+        b2 = np.ldexp(tempo_c, -k.astype(np.int64))
+        pct = np.abs(tempo_r - b2) / np.minimum(tempo_r, b2)
         tempo = np.exp(-((pct / tv["sigma"]) ** 2)) * np.where(k != 0, tv["octave_penalty"], 1.0)
-        nrg = energy_smoothness(a["energy"][i], a["energy"])
-        timb = np.clip((self._timbre_unit @ self._timbre_unit[i] + 1.0) / 2.0, 0.0, 1.0)
-        loud = loudness_score(a["loudness"][i], a["loudness"], **t["loudness"])
-        era = era_score(a["year"][i], a["year"], **t["era"])
+        nrg = energy_smoothness(a["energy"][r], a["energy"][cols][None, :])
+        timb = np.clip((self._timbre_unit[rows] @ self._timbre_unit[cols].T + 1.0) / 2.0,
+                       0.0, 1.0)
+        loud = loudness_score(a["loudness"][r], a["loudness"][cols][None, :], **t["loudness"])
+        era = era_score(a["year"][r], a["year"][cols][None, :], **t["era"])
         w = t["weights"]
         total = sum(w[k] for k in COMPONENTS)
         return (w["harmonic"] * harm + w["tempo"] * tempo + w["energy_smoothness"] * nrg

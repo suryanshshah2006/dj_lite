@@ -14,3 +14,4 @@ app/backend/cache/
 
 # App screenshots (contain cover art; local only)
 reports/screenshots/
+*.log

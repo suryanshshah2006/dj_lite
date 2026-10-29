@@ -1,0 +1,41 @@
+# Step 5: arc-following playlist generator (src/djlite/generator.py).
+# Objective summed over positions 2..N (position 1 is the first seed):
+#   alpha * relevance(track, seed set) + (1 - alpha) * transition(prev, track)
+#   + gamma * arc_fit(track, e_i),   arc_fit = 1 - |energy - e_i|
+
+pool:
+  per_seed_k: 2000       # FAISS candidates per seed (combined audio+style index)
+  k: 2000                # pool cap: top-k of the union by relevance to the seed set
+
+objective:
+  alpha: 0.5             # relevance vs transition (reviewed in eval v2: knee at 0.5-0.75)
+  gamma: 0.5             # arc-fit weight
+
+constraints:
+  max_per_artist: 1      # only 1 is supported (each pick blocks all its artists)
+  max_dbpm: null         # optional cap on octave-aligned |dBPM| per transition, e.g. 6
+
+beam:
+  width: 20
+
+# Same control points as the web app's presets (app/frontend/lib/arcs.ts), resampled
+# linearly onto N evenly spaced positions.
+arcs:
+  warmup_peak_cooldown: [0.35, 0.5, 0.68, 0.85, 0.9, 0.7, 0.45]
+  steady: [0.7, 0.72, 0.7, 0.72, 0.7, 0.72, 0.7]
+  slow_build: [0.25, 0.35, 0.45, 0.55, 0.68, 0.8, 0.92]
+  sunset: [0.75, 0.68, 0.6, 0.5, 0.42, 0.33, 0.25]
+
+evaluation:
+  n_seeds: 500           # random genre-labeled seeds (labels: eval v2 ID + name matching)
+  random_seed: 7
+  length: 12
+  harmonic_compatible: 0.9   # transition counts as harmonically compatible if the Camelot
+                             # score >= this (same key, +-1 on the wheel, relative major/minor)
+  bootstrap: {n_resamples: 1000, ci: 0.95, random_seed: 0}
+  ablations:
+    beam_width: [1, 5, 20, 50]
+    gamma: [0, 0.25, 0.5, 1.0]
+    alpha: [0.5, 0.75]
+    max_dbpm: [null, 6, 3]   # extra: does a hard cap remove the worst transitions?
+  example_seed: 1LPGNTuBxFsfy0KFtU4WAW   # Duke Dumont - Worship (example-playlist figure)

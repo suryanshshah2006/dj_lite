@@ -74,7 +74,7 @@ python -m pytest app/backend/tests -q
 | GET | `/api/featured` | Curated tracks for the Home page (`featured:` in `settings.yaml`) |
 | GET | `/api/track/{id}` | Track details (BPM, Camelot, energy, valence, …) |
 | POST | `/api/next` | `{seed_id, n, alpha}` → next tracks with score breakdown |
-| POST | `/api/mix` | `{seed_ids, arc, alpha, length}` → arc-following mix (`generator: greedy_v0`) |
+| POST | `/api/mix` | `{seed_ids, arc, alpha, length, generator?}` → arc-following mix; `beam_v1` (default) or `greedy_v0`, with `runtime_ms` |
 | GET | `/api/cover/{id}` | Cover URL via Spotify oEmbed, SQLite-cached, ~5 req/s |
 | GET | `/api/eval` | Evaluation table + figure once `reports/eval_v2.*` exist |
 

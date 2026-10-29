@@ -29,7 +29,7 @@ const STEPS = [
   },
   {
     title: "Follow the energy arc",
-    body: "The mix generator walks forward one track at a time, balancing relevance to your seed (α), transition quality (1 − α) and how close the track sits to your energy curve. Today it is greedy; beam search is next.",
+    body: "The mix generator scores every step on relevance to your seeds (α), transition quality (1 − α) and how close the track sits to your energy curve. Instead of grabbing the best next track one at a time, a beam search keeps the 20 most promising partial mixes and picks the best whole set, from a pool of 2,000 candidates.",
   },
 ];
 
